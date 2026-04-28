@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using Aion2FunDps.Capture;
 using Aion2FunDps.Core;
+using Aion2FunDps.Core.Sessions;
 using Aion2FunDps.Protocol;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -133,6 +134,10 @@ public partial class MainViewModel : ObservableObject
 
         // Resolve primary (registered self OR most-hits heuristic)
         var primary = _aggregator.ResolvePrimary();
+        // If primary isn't in displayed crew (e.g., a mob with high hit count), pick
+        // the top-hits crew member so [me?] always lights up one row.
+        if (primary != null && !crew.Any(p => p.ActorId == primary.ActorId))
+            primary = crew.OrderByDescending(p => p.HitCount).FirstOrDefault();
         bool selfIsRegistered = _aggregator.Registry.SelfUserId.HasValue;
 
         // Build new view-model state
@@ -150,9 +155,15 @@ public partial class MainViewModel : ObservableObject
         foreach (var p in crew)
         {
             rank++;
-            var name = _aggregator.Registry.GetName(p.ActorId) ?? $"Actor_{p.ActorId}";
+            var registeredName = _aggregator.Registry.GetName(p.ActorId);
             var entry = _aggregator.Registry.GetEntry(p.ActorId);
             bool isSelf = entry?.IsSelf == true;
+            bool isPrimaryGuessRow = !isSelf && !selfIsRegistered && primary != null && primary.ActorId == p.ActorId;
+
+            // Display name: registered nickname if known; else "나" for the heuristic
+            // primary (likely user); else "Actor_<id>" for other unidentified entities.
+            string name = registeredName
+                          ?? (isPrimaryGuessRow ? "나" : $"Actor_{p.ActorId}");
 
             var vm = Players.FirstOrDefault(v => v.ActorId == p.ActorId);
             if (vm == null)
@@ -160,13 +171,17 @@ public partial class MainViewModel : ObservableObject
                 vm = new PlayerRowViewModel { ActorId = p.ActorId };
                 Players.Add(vm);
             }
-            bool isPrimaryGuess = !isSelf && !selfIsRegistered && primary != null && primary.ActorId == p.ActorId;
+            // Detect class from skill names (refreshed each tick — settles quickly once enough skills used)
+            var detectedClass = JobClassDetector.Detect(p.Skills.Keys, _skillDb);
 
             vm.Rank = rank;
             vm.DisplayName = name;
             vm.IsSelf = isSelf;
-            vm.IsPrimaryGuess = isPrimaryGuess;
-            vm.SelfTag = isSelf ? "[me]" : isPrimaryGuess ? "[me?]" : string.Empty;
+            vm.IsPrimaryGuess = isPrimaryGuessRow;
+            vm.SelfTag = (isSelf || isPrimaryGuessRow) ? "[me]" : string.Empty;
+            vm.ClassChar = JobClassDetector.GetShortChar(detectedClass);
+            vm.ClassName = JobClassDetector.GetKoreanName(detectedClass);
+            vm.ClassColorHex = JobClassDetector.GetColorHex(detectedClass);
             vm.TotalDamage = p.TotalDamage;
             vm.Dps = p.Dps;
             vm.HitCount = p.HitCount;

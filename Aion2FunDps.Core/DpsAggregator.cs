@@ -184,12 +184,23 @@ public sealed class DpsAggregator
 
     public PlayerStats? ResolvePrimary()
     {
+        // 1. Registered self (definitive — SELF_NICK packet was received)
         if (_registry.SelfUserId.HasValue
             && Current.AllPlayers.FirstOrDefault(p => p.ActorId == _registry.SelfUserId.Value) is { } selfP)
             return selfP;
 
-        // Fallback: actor with most hits
-        return Current.AllPlayers.OrderByDescending(p => p.HitCount).FirstOrDefault();
+        // 2. Unnamed actor heuristic. OTHER_NICK auto-fires for visible nearby players,
+        //    populating names for everyone except self (since server doesn't broadcast
+        //    self to self via OTHER_NICK). So in a session, the actor without a
+        //    registered name is most likely the user. Pick highest damage among them.
+        var unnamed = Current.AllPlayers
+            .Where(p => _registry.GetName(p.ActorId) == null)
+            .ToList();
+        if (unnamed.Count > 0)
+            return unnamed.OrderByDescending(p => p.TotalDamage).First();
+
+        // 3. Fallback: highest damage overall
+        return Current.AllPlayers.OrderByDescending(p => p.TotalDamage).FirstOrDefault();
     }
 
     /// <summary>

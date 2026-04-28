@@ -10,6 +10,9 @@ public partial class PlayerRowViewModel : ObservableObject
     [ObservableProperty] private bool isSelf;
     [ObservableProperty] private bool isPrimaryGuess;
     [ObservableProperty] private string selfTag = string.Empty;
+    [ObservableProperty] private string classChar = "?";
+    [ObservableProperty] private string className = "?";
+    [ObservableProperty] private string classColorHex = "#555555";
     [ObservableProperty] private long totalDamage;
     [ObservableProperty] private double dps;
     [ObservableProperty] private int hitCount;

@@ -95,7 +95,37 @@ public sealed class PacketDispatcher
             return;
         }
 
-        // Unhandled (yet) — DOT, NICK, SUMMON, COMBAT_BOUNDARY, BUFF, etc.
+        // 0x33 0x36 = SELF_NICK
+        if (op0 == 0x33 && op1 == 0x36)
+        {
+            if (SelfNicknameHandler.TryParse(body, ticks, sourceIpv4, out var nick))
+            {
+                emit(nick);
+                Interlocked.Increment(ref _knownCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _malformedCount);
+            }
+            return;
+        }
+
+        // 0x21 0x8d = COMBAT_BOUNDARY
+        if (op0 == 0x21 && op1 == 0x8d)
+        {
+            if (CombatBoundaryHandler.TryParse(body, ticks, sourceIpv4, out var cb))
+            {
+                emit(cb);
+                Interlocked.Increment(ref _knownCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _malformedCount);
+            }
+            return;
+        }
+
+        // Unhandled (yet) — DOT, OTHER_NICK, SUMMON, BUFF, etc.
         Interlocked.Increment(ref _unknownCount);
     }
 }

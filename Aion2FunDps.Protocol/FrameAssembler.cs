@@ -42,25 +42,30 @@ public sealed class FrameAssembler
         while (offset < combinedLen)
         {
             var span = combined.AsSpan(offset, combinedLen - offset);
-            if (!TryReadVarInt(span, out int packetBodyLen, out int varIntBytes))
+            if (!TryReadVarInt(span, out int varIntValue, out int varIntBytes))
                 break;
 
-            if (packetBodyLen <= 0)
+            // Aion 2 framing: total bytes to consume = varintValue + varintBytes - 4.
+            // The "-4" accounts for a 4-byte protocol artifact the spec includes in the
+            // size value but excludes from the slice handed to the processor.
+            // Source: TK-open-public StreamAssembler.kt — realLength = value + length - 4.
+            int realLength = varIntValue + varIntBytes - 4;
+            if (realLength <= varIntBytes)
             {
                 Interlocked.Increment(ref _malformedFrames);
                 offset = combinedLen;
                 break;
             }
 
-            int totalRequired = varIntBytes + packetBodyLen;
-            if (combinedLen - offset < totalRequired)
-                break;
+            if (combinedLen - offset < realLength)
+                break; // game packet body incomplete — wait for more bytes
 
-            byte[] gpBuf = ArrayPool<byte>.Shared.Rent(packetBodyLen);
-            Array.Copy(combined, offset + varIntBytes, gpBuf, 0, packetBodyLen);
-            onGamePacket(new GamePacket(chunk.SourceIpv4, chunk.TimestampTicks, gpBuf, packetBodyLen));
+            int bodyLength = realLength - varIntBytes;
+            byte[] gpBuf = ArrayPool<byte>.Shared.Rent(bodyLength);
+            Array.Copy(combined, offset + varIntBytes, gpBuf, 0, bodyLength);
+            onGamePacket(new GamePacket(chunk.SourceIpv4, chunk.TimestampTicks, gpBuf, bodyLength));
 
-            offset += totalRequired;
+            offset += realLength;
         }
 
         int remaining = combinedLen - offset;

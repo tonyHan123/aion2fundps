@@ -2,6 +2,7 @@
   <Project Path="Aion2FunDps.App/Aion2FunDps.App.csproj" />
   <Project Path="Aion2FunDps.Capture/Aion2FunDps.Capture.csproj" />
   <Project Path="Aion2FunDps.Core/Aion2FunDps.Core.csproj" />
+  <Project Path="Aion2FunDps.DevConsole/Aion2FunDps.DevConsole.csproj" />
   <Project Path="Aion2FunDps.Protocol/Aion2FunDps.Protocol.csproj" />
   <Project Path="Aion2FunDps.Storage/Aion2FunDps.Storage.csproj" />
   <Project Path="Aion2FunDps.UI/Aion2FunDps.UI.csproj" />

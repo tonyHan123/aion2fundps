@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aion2FunDps.Capture\Aion2FunDps.Capture.csproj" />
+    <ProjectReference Include="..\Aion2FunDps.Protocol\Aion2FunDps.Protocol.csproj" />
+    <ProjectReference Include="..\Aion2FunDps.Core\Aion2FunDps.Core.csproj" />
+    <ProjectReference Include="..\Aion2FunDps.Storage\Aion2FunDps.Storage.csproj" />
+    <ProjectReference Include="..\Aion2FunDps.UI\Aion2FunDps.UI.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>

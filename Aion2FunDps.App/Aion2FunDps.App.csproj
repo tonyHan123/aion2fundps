@@ -16,4 +16,22 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Content Include="..\Aion2FunDps.Storage\Data\mobs.json"            Link="Data\mobs.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Aion2FunDps.Storage\Data\skills.json"          Link="Data\skills.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Aion2FunDps.Storage\Data\buff_blacklist.json"  Link="Data\buff_blacklist.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Aion2FunDps.Storage\Data\buff_custom.json"     Link="Data\buff_custom.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Aion2FunDps.Storage\Data\NOTICE.md"            Link="Data\NOTICE.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

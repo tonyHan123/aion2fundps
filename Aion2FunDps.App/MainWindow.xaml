@@ -1,12 +1,223 @@
-﻿<Window x:Class="Aion2FunDps.App.MainWindow"
+<Window x:Class="Aion2FunDps.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Aion2FunDps.UI.ViewModels;assembly=Aion2FunDps.UI"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Aion2FunDps.App"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="aion2fundps"
+        Width="540" Height="420"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="CanResizeWithGrip"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
 
-    </Grid>
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <SolidColorBrush x:Key="BgBrush" Color="#E6101115"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#22FFFFFF"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#F0F0F0"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#8AAEC0"/>
+        <FontFamily x:Key="UiFont">Pretendard, Malgun Gothic, Segoe UI</FontFamily>
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
+    </Window.Resources>
+
+    <Border Background="{StaticResource BgBrush}"
+            BorderBrush="{StaticResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="6">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title bar (drag) -->
+            <Border Grid.Row="0" Padding="10,6" Background="#1AFFFFFF"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <DockPanel>
+                    <TextBlock Text="aion2fundps"
+                               FontFamily="{StaticResource UiFont}"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding SessionInfo}"
+                               FontFamily="{StaticResource MonoFont}"
+                               Foreground="{StaticResource MutedBrush}"
+                               Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                        <Button Content="—" Click="MinBtn_Click"
+                                Width="26" Height="22" Background="Transparent"
+                                Foreground="{StaticResource TextBrush}" BorderThickness="0"
+                                FontSize="13"/>
+                        <Button Content="✕" Click="CloseBtn_Click"
+                                Width="26" Height="22" Background="Transparent"
+                                Foreground="{StaticResource TextBrush}" BorderThickness="0"
+                                FontSize="13"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Confidence badge -->
+            <Border Grid.Row="1" Padding="10,4" Background="#0FFFFFFF">
+                <DockPanel>
+                    <TextBlock Text="📊" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="신뢰도" Foreground="{StaticResource MutedBrush}"
+                               FontFamily="{StaticResource UiFont}" Margin="0,0,6,0"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ConfidenceEmoji}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ConfidenceScore, StringFormat={}{0:P0}}"
+                               Foreground="{StaticResource TextBrush}"
+                               FontFamily="{StaticResource MonoFont}" FontWeight="Bold"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ConfidenceTier, StringFormat= ({0})}"
+                               Foreground="{StaticResource MutedBrush}"
+                               FontFamily="{StaticResource UiFont}"
+                               Margin="4,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ConfidenceIssues}"
+                               Foreground="{StaticResource MutedBrush}" FontStyle="Italic"
+                               FontFamily="{StaticResource UiFont}"
+                               Margin="10,0,0,0" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+            </Border>
+
+            <!-- Boss / focus banner -->
+            <Border Grid.Row="2" Padding="10,4"
+                    Visibility="{Binding HasFocusedTarget, Converter={StaticResource BoolToVis}}"
+                    Background="#1AF97316">
+                <TextBlock Text="{Binding FocusInfo}"
+                           Foreground="{StaticResource TextBrush}"
+                           FontFamily="{StaticResource UiFont}"/>
+            </Border>
+
+            <!-- Leaderboard -->
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="6,4">
+                <ItemsControl ItemsSource="{Binding Players}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Height="30" Margin="0,1">
+                                <Border CornerRadius="3">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#0AFFFFFF"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSelf}" Value="True">
+                                                    <Setter Property="Background" Value="#3322C55E"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsPrimaryGuess}" Value="True">
+                                                    <Setter Property="Background" Value="#222D9CDB"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                </Border>
+                                <Grid HorizontalAlignment="Stretch">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Background="#553B82F6" CornerRadius="3"
+                                            HorizontalAlignment="Left">
+                                        <Border.Width>
+                                            <Binding Path="DamageBarPercent"
+                                                     RelativeSource="{RelativeSource AncestorType=Grid}"/>
+                                        </Border.Width>
+                                    </Border>
+                                </Grid>
+                                <Grid Margin="8,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="22"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="55"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Rank}"
+                                               Foreground="{StaticResource MutedBrush}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   Foreground="{StaticResource TextBrush}"
+                                                   FontFamily="{StaticResource UiFont}"
+                                                   FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding SelfTag}"
+                                                   Margin="6,0,0,0"
+                                                   FontFamily="{StaticResource UiFont}"
+                                                   FontSize="11">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#8AAEC0"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSelf}" Value="True">
+                                                            <Setter Property="Foreground" Value="#22C55E"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsPrimaryGuess}" Value="True">
+                                                            <Setter Property="Foreground" Value="#60A5FA"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding TotalDamage, StringFormat=N0}"
+                                               Foreground="{StaticResource TextBrush}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               TextAlignment="Right" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding Dps, StringFormat=N0}"
+                                               Foreground="{StaticResource MutedBrush}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               TextAlignment="Right" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="4" Text="{Binding CritRate, StringFormat=P0}"
+                                               Foreground="{StaticResource MutedBrush}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               TextAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!-- Footer -->
+            <Border Grid.Row="4" Padding="10,4" Background="#0AFFFFFF">
+                <DockPanel>
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,6,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="#22C55E"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding TickIndicator}" Value="True">
+                                        <Setter Property="Fill" Value="#22C55E"/>
+                                        <Setter Property="Opacity" Value="1.0"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding TickIndicator}" Value="False">
+                                        <Setter Property="Opacity" Value="0.35"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="{Binding EventsPerSecond, StringFormat={}{0}/s}"
+                               Foreground="{StaticResource TextBrush}"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="11" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding TotalEvents, StringFormat=총 이벤트 {0:N0}}"
+                               Foreground="{StaticResource MutedBrush}"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="11" VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Border>
 </Window>

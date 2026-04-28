@@ -33,6 +33,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool tickIndicator;
     [ObservableProperty] private long lastTickTotalEvents;
     [ObservableProperty] private long eventsPerSecond;
+    [ObservableProperty] private string nickDebugInfo = "nick: 0/0 self, 0/0 other";
 
     public MainViewModel(
         DpsAggregator aggregator,
@@ -89,6 +90,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         SessionInfo = $"{(int)_aggregator.Current.Duration.TotalSeconds}s";
+        NickDebugInfo = $"닉 패킷: SELF {_dispatcher.SelfNickParsed}/{_dispatcher.SelfNickSeen}  OTHER {_dispatcher.OtherNickParsed}/{_dispatcher.OtherNickSeen}";
         var prevTotal = TotalEvents;
         TotalEvents = _aggregator.DamageEventCount + _aggregator.DotEventCount + _aggregator.HpEventCount
                     + _aggregator.NicknameEventCount + _aggregator.CombatBoundaryEventCount + _aggregator.SummonSpawnEventCount;

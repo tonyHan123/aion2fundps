@@ -215,6 +215,10 @@
                     <TextBlock Text="{Binding TotalEvents, StringFormat=총 이벤트 {0:N0}}"
                                Foreground="{StaticResource MutedBrush}"
                                FontFamily="{StaticResource MonoFont}"
+                               FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock Text="{Binding NickDebugInfo}"
+                               Foreground="{StaticResource MutedBrush}"
+                               FontFamily="{StaticResource MonoFont}"
                                FontSize="11" VerticalAlignment="Center"/>
                 </DockPanel>
             </Border>

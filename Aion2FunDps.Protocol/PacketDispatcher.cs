@@ -14,11 +14,38 @@ public sealed class PacketDispatcher
     private long _knownCount;
     private long _unknownCount;
     private long _malformedCount;
+    private long _selfNickSeen;
+    private long _selfNickParsed;
+    private long _otherNickSeen;
+    private long _otherNickParsed;
 
     public Lz4Decompressor Lz4 => _lz4;
     public long KnownCount => Volatile.Read(ref _knownCount);
     public long UnknownCount => Volatile.Read(ref _unknownCount);
     public long MalformedCount => Volatile.Read(ref _malformedCount);
+    public long SelfNickSeen => Volatile.Read(ref _selfNickSeen);
+    public long SelfNickParsed => Volatile.Read(ref _selfNickParsed);
+    public long OtherNickSeen => Volatile.Read(ref _otherNickSeen);
+    public long OtherNickParsed => Volatile.Read(ref _otherNickParsed);
+
+    // Diagnostic: log raw bytes of failed SELF_NICK / OTHER_NICK to file for offline analysis
+    public string? DiagnosticLogPath { get; set; }
+    private readonly object _logLock = new();
+
+    private void LogPacket(string opcodeName, ReadOnlySpan<byte> body, bool parsed)
+    {
+        if (DiagnosticLogPath == null) return;
+        try
+        {
+            var hex = string.Join(" ", body[..Math.Min(64, body.Length)].ToArray().Select(b => b.ToString("x2")));
+            lock (_logLock)
+            {
+                System.IO.File.AppendAllText(DiagnosticLogPath,
+                    $"{DateTime.Now:HH:mm:ss.fff} {opcodeName} parsed={parsed} len={body.Length}: {hex}\n");
+            }
+        }
+        catch { }
+    }
 
     public void Dispatch(in GamePacket gp, Action<IGameEvent> emit)
     {
@@ -32,10 +59,20 @@ public sealed class PacketDispatcher
         DispatchOpcode(data, gp.SourceIpv4, gp.TimestampTicks, emit);
     }
 
-    private void DispatchCompressed(ReadOnlySpan<byte> compressed, uint sourceIpv4, long ticks, Action<IGameEvent> emit)
+    private void DispatchCompressed(ReadOnlySpan<byte> compressedSection, uint sourceIpv4, long ticks, Action<IGameEvent> emit)
     {
-        var compressedArray = compressed.ToArray();
-        _lz4.TryDecompress(compressedArray, decompressed =>
+        // Aion 2 layout after 0xff 0xff marker:
+        //   [originLength: uint32 LE, 4 bytes] [LZ4 compressed data]
+        if (compressedSection.Length < 5) return;
+
+        int originLength = compressedSection[0]
+                         | (compressedSection[1] << 8)
+                         | (compressedSection[2] << 16)
+                         | (compressedSection[3] << 24);
+
+        var compressed = compressedSection[4..].ToArray();
+
+        _lz4.TryDecompress(compressed, originLength, decompressed =>
         {
             var span = decompressed.Span;
             int offset = 0;
@@ -43,6 +80,14 @@ public sealed class PacketDispatcher
             {
                 if (!FrameAssembler.TryReadVarInt(span[offset..], out int v, out int vBytes))
                     break;
+
+                // varint == 0 means skip 1 byte (per TK StreamProcessor)
+                if (v == 0)
+                {
+                    offset += 1;
+                    continue;
+                }
+
                 int realLen = v + vBytes - 4;
                 if (realLen <= vBytes || span.Length - offset < realLen)
                     break;
@@ -98,8 +143,12 @@ public sealed class PacketDispatcher
         // 0x33 0x36 = SELF_NICK
         if (op0 == 0x33 && op1 == 0x36)
         {
-            if (SelfNicknameHandler.TryParse(body, ticks, sourceIpv4, out var nick))
+            Interlocked.Increment(ref _selfNickSeen);
+            bool ok = SelfNicknameHandler.TryParse(body, ticks, sourceIpv4, out var nick);
+            LogPacket("SELF_NICK", body, ok);
+            if (ok)
             {
+                Interlocked.Increment(ref _selfNickParsed);
                 emit(nick);
                 Interlocked.Increment(ref _knownCount);
             }
@@ -143,8 +192,12 @@ public sealed class PacketDispatcher
         // 0x44 0x36 = OTHER_NICK
         if (op0 == 0x44 && op1 == 0x36)
         {
-            if (OtherNicknameHandler.TryParse(body, ticks, sourceIpv4, out var nick))
+            Interlocked.Increment(ref _otherNickSeen);
+            bool ok = OtherNicknameHandler.TryParse(body, ticks, sourceIpv4, out var nick);
+            LogPacket("OTHER_NICK", body, ok);
+            if (ok)
             {
+                Interlocked.Increment(ref _otherNickParsed);
                 emit(nick);
                 Interlocked.Increment(ref _knownCount);
             }

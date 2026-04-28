@@ -58,7 +58,10 @@ public partial class App : Application
 
             var reorderer = new SequenceReorderer();
             var assembler = new FrameAssembler();
-            var dispatcher = new PacketDispatcher();
+            var dispatcher = new PacketDispatcher
+            {
+                DiagnosticLogPath = Path.Combine(AppContext.BaseDirectory, "nick-debug.log"),
+            };
             var aggregator = new DpsAggregator();
 
             _cts = new CancellationTokenSource();

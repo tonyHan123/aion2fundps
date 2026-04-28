@@ -14,11 +14,13 @@ public sealed class DpsAggregator
     private readonly NicknameRegistry _registry;
     private readonly SummonRepository _summons;
     private readonly BossTracker _boss;
+    private readonly AccuracyEstimator _accuracy;
 
     public Session Current { get; private set; }
     public NicknameRegistry Registry => _registry;
     public SummonRepository Summons => _summons;
     public BossTracker Boss => _boss;
+    public AccuracyEstimator Accuracy => _accuracy;
 
     public long DamageEventCount { get; private set; }
     public long DotEventCount { get; private set; }
@@ -33,7 +35,47 @@ public sealed class DpsAggregator
         _registry = new NicknameRegistry();
         _summons = new SummonRepository();
         _boss = new BossTracker();
+        _accuracy = new AccuracyEstimator();
         Current = new Session();
+    }
+
+    /// <summary>
+    /// Pulls leak indicators from upstream subsystems and recomputes confidence.
+    /// Call from UI refresh tick (e.g., once per second).
+    /// </summary>
+    public void RefreshAccuracy(long droppedPackets, long malformedFrames, long unknownOpcodes)
+    {
+        _accuracy.DroppedPackets = droppedPackets;
+        _accuracy.MalformedFrames = malformedFrames;
+        _accuracy.UnknownOpcodes = unknownOpcodes;
+
+        // HP-damage cross-check on focused entity
+        if (_boss.FocusedEntityId.HasValue)
+        {
+            int focusId = _boss.FocusedEntityId.Value;
+            uint maxHp = _boss.FocusedMaxHp ?? 0;
+            uint curHp = _boss.FocusedCurrentHp ?? 0;
+            long hpDelta = maxHp >= curHp ? maxHp - curHp : 0;
+
+            long damageToFocus = 0;
+            foreach (var p in Current.AllPlayers)
+            {
+                if (p.DamagePerTarget.TryGetValue(focusId, out var d))
+                    damageToFocus += d;
+            }
+
+            if (hpDelta > 0)
+            {
+                long leak = Math.Max(0, hpDelta - damageToFocus);
+                _accuracy.HpDamageDrift = (double)leak / hpDelta;
+            }
+            else
+            {
+                _accuracy.HpDamageDrift = 0;
+            }
+        }
+
+        _accuracy.Recompute();
     }
 
     public void OnEvent(IGameEvent evt)

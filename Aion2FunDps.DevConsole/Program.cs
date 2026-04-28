@@ -50,10 +50,22 @@ void DrawStats()
             Console.Clear();
             Console.CursorVisible = false;
 
-            Console.WriteLine("=== Aion2FunDps DevConsole — Phase 1c-iii: 우리 파티 + 보스 모드 ===");
+            // Refresh accuracy estimator with latest counters from upstream subsystems
+            aggregator.RefreshAccuracy(
+                droppedPackets: capture.Health.DroppedPackets + capture.Health.InterfaceDroppedPackets + capture.Health.DroppedAtChannel,
+                malformedFrames: assembler.MalformedFrames + dispatcher.MalformedCount,
+                unknownOpcodes: dispatcher.UnknownCount);
+
+            Console.WriteLine("=== Aion2FunDps DevConsole — Phase 1e: 신뢰도 배지 ===");
             Console.WriteLine();
             Console.WriteLine($"인터페이스: {capture.SelectedInterface}");
             Console.WriteLine($"DB: 몹 {mobDb.Count:N0}개  /  스킬 {skillDb.Count:N0}개  /  세션 {(int)aggregator.Current.Duration.TotalSeconds}s");
+
+            // Confidence badge — the differentiator
+            var acc = aggregator.Accuracy;
+            var issues = string.Join(", ", acc.Issues());
+            if (string.IsNullOrEmpty(issues)) issues = "(이상 없음)";
+            Console.WriteLine($"📊 신뢰도: {acc.StatusEmoji} {acc.ConfidenceScore,4:P0} ({acc.Tier})  └ {issues}");
 
             // Boss banner
             if (aggregator.Boss.IsBossMode && aggregator.Boss.FocusedEntityId.HasValue)

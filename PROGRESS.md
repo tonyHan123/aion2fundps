@@ -4,7 +4,14 @@
 
 ## 현재 위치
 
-**Phase 1b 완료** (2026-04-28). 캡처 → 시퀀스 정렬 → VarInt 프레이밍 → opcode 인식까지 검증. 라이브 KR 서버 전투 데이터에서 DAMAGE 54, MOB_HP 93, COMBAT_BOUNDARY 23 등 실제 opcode 정확히 추출.
+**Phase 1c-iii 완료** (2026-04-28). 데이터 레이어 사실상 완성:
+- 캡처 → 시퀀스 정렬 → 프레이밍 → opcode 분기 → 도메인 이벤트 → 통계 누적 ✅
+- 8개 opcode 핸들러 (DAMAGE, DOT, MOB_HP, COMBAT_BOUNDARY, SELF/OTHER_NICK, SUMMON, BUFF는 추후)
+- mob_data.json + skills.json 통합 (몹 6,384 / 스킬 8,211)
+- 타겟-공유 필터로 옆 사람 자동 제외
+- 보스 모드 자동 감지 (HP ≥ 500K)
+- 한글 스킬명 표시
+- 라이브 검증 완료 (필드 솔로 사냥에서 본인만 leaderboard 등장)
 
 ## 마일스톤 진행도
 

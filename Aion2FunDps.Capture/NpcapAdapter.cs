@@ -19,7 +19,7 @@ public sealed class NpcapAdapter : IDisposable
 
     public NpcapAdapter(CaptureOptions options)
     {
-        _device = InterfaceAutoSelector.SelectForServer(options.ServerIp);
+        _device = InterfaceAutoSelector.SelectForServer(options.RoutingProbeIp);
 
         _channel = Channel.CreateBounded<RawPacket>(new BoundedChannelOptions(options.ChannelCapacity)
         {
@@ -68,6 +68,8 @@ public sealed class NpcapAdapter : IDisposable
 
         if (!TryExtractTcpPayload(data,
                 out uint sourceIp,
+                out ushort srcPort,
+                out ushort dstPort,
                 out uint tcpSeq,
                 out int payloadOffset,
                 out int payloadLength))
@@ -76,7 +78,8 @@ public sealed class NpcapAdapter : IDisposable
         var rented = ArrayPool<byte>.Shared.Rent(payloadLength);
         data.Slice(payloadOffset, payloadLength).CopyTo(rented);
 
-        var packet = new RawPacket(sourceIp, tcpSeq, raw.Timeval.Date.Ticks, rented, payloadLength);
+        var packet = new RawPacket(sourceIp, srcPort, dstPort, tcpSeq,
+            raw.Timeval.Date.Ticks, rented, payloadLength);
 
         if (!_writer.TryWrite(packet))
         {
@@ -88,11 +91,15 @@ public sealed class NpcapAdapter : IDisposable
     private static bool TryExtractTcpPayload(
         ReadOnlySpan<byte> packet,
         out uint sourceIp,
+        out ushort sourcePort,
+        out ushort destinationPort,
         out uint tcpSeq,
         out int payloadOffset,
         out int payloadLength)
     {
         sourceIp = 0;
+        sourcePort = 0;
+        destinationPort = 0;
         tcpSeq = 0;
         payloadOffset = 0;
         payloadLength = 0;
@@ -107,13 +114,24 @@ public sealed class NpcapAdapter : IDisposable
         if (ipHeaderLen < 20 || packet.Length < ipStart + ipHeaderLen) return false;
         if (packet[ipStart + 9] != 6) return false;
 
+        // IP Total Length (offset 2-3, big-endian) — authoritative IP datagram length.
+        // We trust this rather than packet.Length, because Ethernet pads sub-60-byte frames
+        // with zeros that would otherwise be misread as TCP payload, corrupting seq tracking.
+        int ipTotalLen = (packet[ipStart + 2] << 8) | packet[ipStart + 3];
+        if (ipTotalLen < ipHeaderLen + 20) return false;
+        int ipEnd = ipStart + ipTotalLen;
+        if (packet.Length < ipEnd) return false;
+
         sourceIp = (uint)((packet[ipStart + 12] << 24)
                        | (packet[ipStart + 13] << 16)
                        | (packet[ipStart + 14] << 8)
                        |  packet[ipStart + 15]);
 
         int tcpStart = ipStart + ipHeaderLen;
-        if (packet.Length < tcpStart + 20) return false;
+        if (ipEnd < tcpStart + 20) return false;
+
+        sourcePort = (ushort)((packet[tcpStart] << 8) | packet[tcpStart + 1]);
+        destinationPort = (ushort)((packet[tcpStart + 2] << 8) | packet[tcpStart + 3]);
 
         tcpSeq = (uint)((packet[tcpStart + 4] << 24)
                      | (packet[tcpStart + 5] << 16)
@@ -121,10 +139,10 @@ public sealed class NpcapAdapter : IDisposable
                      |  packet[tcpStart + 7]);
 
         int tcpHeaderLen = (packet[tcpStart + 12] >> 4) * 4;
-        if (tcpHeaderLen < 20 || packet.Length < tcpStart + tcpHeaderLen) return false;
+        if (tcpHeaderLen < 20 || ipEnd < tcpStart + tcpHeaderLen) return false;
 
         payloadOffset = tcpStart + tcpHeaderLen;
-        payloadLength = packet.Length - payloadOffset;
+        payloadLength = ipEnd - payloadOffset;
 
         return payloadLength > 0;
     }

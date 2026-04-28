@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Aion2FunDps.Core\Aion2FunDps.Core.csproj" />
+    <ProjectReference Include="..\Aion2FunDps.Capture\Aion2FunDps.Capture.csproj" />
   </ItemGroup>
 
   <ItemGroup>

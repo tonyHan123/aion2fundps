@@ -16,6 +16,12 @@ public sealed class PlayerStats
     private readonly Dictionary<uint, SkillStats> _skills = new();
     public IReadOnlyDictionary<uint, SkillStats> Skills => _skills;
 
+    private readonly HashSet<int> _targets = new();
+    public IReadOnlySet<int> Targets => _targets;
+
+    private readonly Dictionary<int, long> _damagePerTarget = new();
+    public IReadOnlyDictionary<int, long> DamagePerTarget => _damagePerTarget;
+
     public PlayerStats(int actorId) { ActorId = actorId; }
 
     public void Apply(DamageEvent evt)
@@ -28,6 +34,10 @@ public sealed class PlayerStats
         if (evt.IsCritical) CritCount++;
         if (evt.IsBackAttack) BackAttackCount++;
         if (evt.IsDot) DotHitCount++;
+
+        _targets.Add(evt.TargetId);
+        _damagePerTarget[evt.TargetId] =
+            _damagePerTarget.GetValueOrDefault(evt.TargetId, 0) + evt.Damage;
 
         if (!_skills.TryGetValue(evt.SkillCode, out var s))
         {
@@ -49,4 +59,12 @@ public sealed class PlayerStats
 
     public double CritRate => HitCount == 0 ? 0 : (double)CritCount / HitCount;
     public double BackAttackRate => HitCount == 0 ? 0 : (double)BackAttackCount / HitCount;
+
+    /// <summary>True if this actor and another share at least one target.</summary>
+    public bool SharesTargetWith(PlayerStats other)
+    {
+        if (other == this) return true;
+        if (_targets.Count == 0 || other._targets.Count == 0) return false;
+        return _targets.Overlaps(other._targets);
+    }
 }

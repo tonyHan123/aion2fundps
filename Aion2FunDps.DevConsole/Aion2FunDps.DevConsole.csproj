@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Aion2FunDps.Capture\Aion2FunDps.Capture.csproj" />
     <ProjectReference Include="..\Aion2FunDps.Protocol\Aion2FunDps.Protocol.csproj" />
     <ProjectReference Include="..\Aion2FunDps.Core\Aion2FunDps.Core.csproj" />
+    <ProjectReference Include="..\Aion2FunDps.Storage\Aion2FunDps.Storage.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

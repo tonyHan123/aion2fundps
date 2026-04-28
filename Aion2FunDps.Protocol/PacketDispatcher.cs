@@ -125,7 +125,52 @@ public sealed class PacketDispatcher
             return;
         }
 
-        // Unhandled (yet) — DOT, OTHER_NICK, SUMMON, BUFF, etc.
+        // 0x05 0x38 = DOT (damage over time)
+        if (op0 == 0x05 && op1 == 0x38)
+        {
+            if (DotHandler.TryParse(body, ticks, sourceIpv4, out var dot))
+            {
+                emit(dot);
+                Interlocked.Increment(ref _knownCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _malformedCount);
+            }
+            return;
+        }
+
+        // 0x44 0x36 = OTHER_NICK
+        if (op0 == 0x44 && op1 == 0x36)
+        {
+            if (OtherNicknameHandler.TryParse(body, ticks, sourceIpv4, out var nick))
+            {
+                emit(nick);
+                Interlocked.Increment(ref _knownCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _malformedCount);
+            }
+            return;
+        }
+
+        // 0x40 0x36 = SUMMON_SPAWN
+        if (op0 == 0x40 && op1 == 0x36)
+        {
+            if (SummonSpawnHandler.TryParse(body, ticks, sourceIpv4, out var sm))
+            {
+                emit(sm);
+                Interlocked.Increment(ref _knownCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _malformedCount);
+            }
+            return;
+        }
+
+        // Unhandled (yet) — BUFF (0x2a/0x2b 0x38), party events (0x__ 0x97), etc.
         Interlocked.Increment(ref _unknownCount);
     }
 }

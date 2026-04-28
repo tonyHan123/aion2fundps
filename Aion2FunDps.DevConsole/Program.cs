@@ -1,10 +1,12 @@
 using Aion2FunDps.Capture;
+using Aion2FunDps.Core;
+using Aion2FunDps.Core.Models;
 using Aion2FunDps.Protocol;
 
 var options = new CaptureOptions();
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
-Console.WriteLine("=== Aion2FunDps DevConsole — Phase 1b: 시퀀스 정렬 + VarInt 프레이밍 ===");
+Console.WriteLine("=== Aion2FunDps DevConsole — Phase 1c: opcode dispatch + 도메인 이벤트 ===");
 Console.WriteLine();
 
 NpcapAdapter capture;
@@ -18,27 +20,15 @@ catch (Exception ex)
     return;
 }
 
-// 알려진 KR opcode (TK-open-public 분석 기반)
-var knownOpcodes = new Dictionary<(byte, byte), string>
-{
-    { (0x04, 0x38), "DAMAGE" },
-    { (0x05, 0x38), "DOT" },
-    { (0x40, 0x36), "SUMMON_SPAWN" },
-    { (0x33, 0x36), "SELF_NICK" },
-    { (0x44, 0x36), "OTHER_NICK" },
-    { (0x21, 0x8d), "COMBAT_BOUNDARY" },
-    { (0x00, 0x8d), "MOB_HP" },
-    { (0x2a, 0x38), "BUFF_APPLY" },
-    { (0x2b, 0x38), "BUFF_REMOVE" },
-};
-
 var reorderer = new SequenceReorderer();
 var assembler = new FrameAssembler();
+var dispatcher = new PacketDispatcher();
 
-int totalGamePackets = 0;
-int compressedCount = 0;
-var opcodeStats = new Dictionary<string, int>();
-const int DetailDisplayCount = 15;
+int damageCount = 0;
+int hpCount = 0;
+int totalDamageSum = 0;
+int displayed = 0;
+const int MaxDisplay = 20;
 
 using (capture)
 {
@@ -50,40 +40,44 @@ using (capture)
         Console.WriteLine($"⚠️  DROP +{args.NewDrops}");
 
     capture.Start();
-    Console.WriteLine("캡처 시작. 게임에서 활동하세요. (60초 후 자동 종료, Ctrl+C로 조기 종료)");
+    Console.WriteLine("캡처 시작. 게임에서 전투하세요. (60초 후 자동 종료, Ctrl+C로 조기 종료)");
     Console.WriteLine();
 
     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
+    Action<IGameEvent> onEvent = evt =>
+    {
+        switch (evt)
+        {
+            case DamageEvent dmg:
+                damageCount++;
+                totalDamageSum += dmg.Damage;
+                if (displayed < MaxDisplay)
+                {
+                    displayed++;
+                    string critTag = dmg.IsCritical ? " 💥CRIT" : "";
+                    string backTag = dmg.IsBackAttack ? " 🗡️BACK" : "";
+                    string skillTag = $"skill={dmg.SkillCode}";
+                    Console.WriteLine(
+                        $"[DMG ] actor={dmg.ActorId,8} → target={dmg.TargetId,8}, dmg={dmg.Damage,7} ({skillTag}){critTag}{backTag}");
+                }
+                break;
+
+            case MobHpUpdate hp:
+                hpCount++;
+                if (displayed < MaxDisplay)
+                {
+                    displayed++;
+                    Console.WriteLine($"[HP  ] mob={hp.MobId,8}, currentHp={hp.CurrentHp,12:N0}");
+                }
+                break;
+        }
+    };
+
     Action<GamePacket> onGamePacket = gp =>
     {
-        int n = ++totalGamePackets;
-        var key = (gp.OpcodeFirst, gp.OpcodeSecond);
-        var name = knownOpcodes.GetValueOrDefault(key, "UNKNOWN");
-
-        bool isCompressed = CompressionDetector.IsCompressed(gp.Data, out int compOffset);
-        if (isCompressed) compressedCount++;
-
-        var statsKey = isCompressed ? "(compressed)" : name;
-        opcodeStats[statsKey] = opcodeStats.GetValueOrDefault(statsKey, 0) + 1;
-
-        if (n <= DetailDisplayCount)
-        {
-            string label = isCompressed ? $"🗜️ COMPRESSED (data @ offset {compOffset})" : $"{gp.OpcodeHex} = {name}";
-            Console.WriteLine($"[게임패킷 {n,3}] len={gp.Length,4}, {label}");
-
-            int previewLen = Math.Min(24, gp.Length);
-            var hex = string.Empty;
-            for (int i = 0; i < previewLen; i++)
-                hex += gp.Buffer[i].ToString("x2") + " ";
-            Console.WriteLine($"          {hex}");
-        }
-        else if (n % 50 == 0)
-        {
-            Console.Write($"\r수집 게임 패킷: {n} (압축 {compressedCount})  ");
-        }
-
+        dispatcher.Dispatch(gp, onEvent);
         gp.Dispose();
     };
 
@@ -94,7 +88,6 @@ using (capture)
         await foreach (var rawPacket in capture.Reader.ReadAllAsync(cts.Token))
         {
             reorderer.Feed(rawPacket, onOrderedChunk);
-            // ownership transferred to reorderer; do not Dispose rawPacket here
         }
     }
     catch (OperationCanceledException) { }
@@ -103,23 +96,25 @@ using (capture)
 }
 
 Console.WriteLine();
-Console.WriteLine();
 Console.WriteLine("=== 결과 ===");
-Console.WriteLine($"총 게임 패킷 추출: {totalGamePackets}");
-Console.WriteLine($"  - 일반: {totalGamePackets - compressedCount}");
-Console.WriteLine($"  - LZ4 압축: {compressedCount}");
+Console.WriteLine($"DAMAGE 이벤트: {damageCount}");
+Console.WriteLine($"  총 데미지 합: {totalDamageSum:N0}");
+if (damageCount > 0)
+    Console.WriteLine($"  평균 데미지: {totalDamageSum / damageCount:N0}");
+Console.WriteLine($"MOB_HP 이벤트: {hpCount}");
+Console.WriteLine();
+Console.WriteLine($"Dispatcher 통계:");
+Console.WriteLine($"  - 알려진 opcode: {dispatcher.KnownCount}");
+Console.WriteLine($"  - 알려지지 않은 opcode: {dispatcher.UnknownCount}");
+Console.WriteLine($"  - malformed: {dispatcher.MalformedCount}");
+Console.WriteLine($"LZ4 압축 해제:");
+Console.WriteLine($"  - 성공: {dispatcher.Lz4.SuccessCount}");
+Console.WriteLine($"  - 실패: {dispatcher.Lz4.FailureCount}");
+Console.WriteLine();
 Console.WriteLine($"시퀀스 정렬:");
-Console.WriteLine($"  - flow 수 (4-tuple): {reorderer.FlowCount}");
 Console.WriteLine($"  - retransmit drop: {reorderer.DroppedRetransmits}");
 Console.WriteLine($"  - hold overflow drop: {reorderer.DroppedOverflow}");
-Console.WriteLine($"프레이밍:");
-Console.WriteLine($"  - flow 수: {assembler.FlowCount}");
-Console.WriteLine($"  - malformed: {assembler.MalformedFrames}");
-
-Console.WriteLine();
-Console.WriteLine("=== Opcode 분포 ===");
-foreach (var kv in opcodeStats.OrderByDescending(x => x.Value))
-    Console.WriteLine($"  {kv.Key,-20} {kv.Value,5}");
+Console.WriteLine($"프레이밍 malformed: {assembler.MalformedFrames}");
 
 Console.WriteLine();
 Console.WriteLine("아무 키나 누르면 종료...");

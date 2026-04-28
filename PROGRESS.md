@@ -4,7 +4,7 @@
 
 ## 현재 위치
 
-**Phase 1a 완료** (2026-04-28). Capture 레이어 동작 검증.
+**Phase 1b 완료** (2026-04-28). 캡처 → 시퀀스 정렬 → VarInt 프레이밍 → opcode 인식까지 검증. 라이브 KR 서버 전투 데이터에서 DAMAGE 54, MOB_HP 93, COMBAT_BOUNDARY 23 등 실제 opcode 정확히 추출.
 
 ## 마일스톤 진행도
 
@@ -26,20 +26,33 @@
 | 검증 (드랍 0개) | 2146 packets / 143 KB / 60s |
 | Commit | `bbf38ad` |
 
-### ⏭️ Phase 1b — 다음 (TCP 정렬 + VarInt + LZ4)
+### ✅ Phase 1b — TCP 정렬 + VarInt 프레이밍 + LZ4 감지
 
-목표: raw bytes → **게임 패킷 단위**로 분할
+| 항목 | 결과 |
+|---|---|
+| 게임 패킷 추출 | 1670개 / 60초 활성 전투 |
+| 4-tuple flow 분리 | flow=1로 정확히 식별 |
+| Hold overflow | 0 (TCP 재정렬 정상) |
+| Malformed | 0 (VarInt 프레이밍 정상) |
+| 알려진 opcode 인식 | DAMAGE 54, MOB_HP 93, COMBAT 23, SUMMON 13, DOT 2, BUFF 3 |
+| LZ4 압축 마커 감지 | 4 |
+| Commit | `c6ff67e` (TK -4 공식 적용) |
+
+**핵심 학습**: TK-open-public의 `realLength = value + length - 4` 공식. 4바이트 protocol artifact 보정 필요.
+
+### ⏭️ Phase 1c — 다음 (LZ4 해제 + opcode dispatch + 도메인 모델)
+
+목표: 게임 패킷 → 의미 있는 도메인 이벤트 (DamageEvent 등)
 
 | 작업 | 위치 |
 |---|---|
-| `SequenceReorderer.cs` | `Aion2FunDps.Capture/` |
-| `FrameAssembler.cs` (VarInt) | `Aion2FunDps.Protocol/` |
-| `Lz4Decompressor.cs` (`0xff 0xff` 마커) | `Aion2FunDps.Protocol/` |
-| DevConsole 업데이트 | 풀린 게임 패킷 hex dump |
+| `Lz4Decompressor.cs` 실제 해제 | `Aion2FunDps.Protocol/` |
+| `PacketDispatcher.cs` opcode 분기 | `Aion2FunDps.Protocol/` |
+| `Models/DamageEvent.cs` 등 도메인 | `Aion2FunDps.Core/` |
+| Handlers/* (DAMAGE, MOB_HP, NICK, SUMMON 등) | `Aion2FunDps.Protocol/` |
+| DevConsole: 실제 데미지 이벤트 출력 | `Aion2FunDps.DevConsole/` |
 
-**검증**: `0x04 0x38` (DAMAGE) opcode가 패킷 시작에서 명확히 보여야 함.
-
-### 🔮 Phase 1c — Opcode dispatch + 도메인 모델
+**검증**: 콘솔에 *"actor=12345 → target=67890, dmg=98765, crit=true"* 같은 실제 파싱 결과 출력.
 ### 🔮 Phase 1d — 통합 (App console 모드)
 ### 🔮 Phase 1e — 신뢰도 표시 (HP-데미지 교차 검증)
 ### 🔮 Phase 2 — 도메인 + 통계 + Storage

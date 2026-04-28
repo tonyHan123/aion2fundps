@@ -17,6 +17,10 @@
         TextOptions.TextFormattingMode="Display"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
 
+    <Window.InputBindings>
+        <KeyBinding Key="R" Modifiers="Control" Command="{Binding ResetSessionCommand}"/>
+    </Window.InputBindings>
+
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <SolidColorBrush x:Key="BgBrush" Color="#E6101115"/>
@@ -54,6 +58,11 @@
                                Foreground="{StaticResource MutedBrush}"
                                Margin="12,0,0,0" VerticalAlignment="Center"/>
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
+                        <Button Content="↻" Command="{Binding ResetSessionCommand}"
+                                ToolTip="세션 리셋 (Ctrl+R)"
+                                Width="26" Height="22" Background="Transparent"
+                                Foreground="{StaticResource TextBrush}" BorderThickness="0"
+                                FontSize="14" FontWeight="Bold"/>
                         <Button Content="—" Click="MinBtn_Click"
                                 Width="26" Height="22" Background="Transparent"
                                 Foreground="{StaticResource TextBrush}" BorderThickness="0"
@@ -64,6 +73,15 @@
                                 FontSize="13"/>
                     </StackPanel>
                 </DockPanel>
+            </Border>
+
+            <!-- Auto-reset flash banner (briefly visible after boss detection) -->
+            <Border Grid.Row="1" Padding="10,4" Background="#33F97316"
+                    Visibility="{Binding ShowAutoResetFlash, Converter={StaticResource BoolToVis}}"
+                    Panel.ZIndex="10">
+                <TextBlock Text="⚡ 보스 감지 → 자동 리셋"
+                           Foreground="#F97316" FontWeight="Bold"
+                           FontFamily="{StaticResource UiFont}"/>
             </Border>
 
             <!-- Confidence badge -->
@@ -216,6 +234,13 @@
                                Foreground="{StaticResource MutedBrush}"
                                FontFamily="{StaticResource MonoFont}"
                                FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <CheckBox IsChecked="{Binding AutoResetOnBoss}"
+                              Content="보스 자동리셋"
+                              ToolTip="보스 등급 (HP 1M+) 적 등장 시 세션 자동 새로고침"
+                              Foreground="{StaticResource MutedBrush}"
+                              FontFamily="{StaticResource UiFont}"
+                              FontSize="11" VerticalAlignment="Center"
+                              DockPanel.Dock="Right" Margin="12,0,0,0"/>
                     <TextBlock Text="{Binding NickDebugInfo}"
                                Foreground="{StaticResource MutedBrush}"
                                FontFamily="{StaticResource MonoFont}"

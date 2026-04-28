@@ -30,6 +30,11 @@ public sealed class DpsAggregator
     public long CombatBoundaryEventCount { get; private set; }
     public long SummonSpawnEventCount { get; private set; }
 
+    public bool AutoResetOnBoss { get; set; } = true;
+
+    /// <summary>Set briefly when an auto-reset just fired — UI can flash a notification.</summary>
+    public DateTime? LastAutoResetAt { get; private set; }
+
     public DpsAggregator()
     {
         _registry = new NicknameRegistry();
@@ -37,6 +42,22 @@ public sealed class DpsAggregator
         _boss = new BossTracker();
         _accuracy = new AccuracyEstimator();
         Current = new Session();
+        _boss.NewBossDetected += OnNewBossDetected;
+    }
+
+    private void OnNewBossDetected(int bossId)
+    {
+        if (!AutoResetOnBoss) return;
+
+        // Snapshot the boss state so it survives the reset (otherwise we'd lose the
+        // entity that just fired the event)
+        var snapshot = _boss.GetEntity(bossId);
+
+        ResetCore();
+        LastAutoResetAt = DateTime.UtcNow;
+
+        if (snapshot != null)
+            _boss.RestoreEntity(bossId, snapshot.MaxHp, snapshot.CurrentHp);
     }
 
     /// <summary>
@@ -171,9 +192,24 @@ public sealed class DpsAggregator
         return Current.AllPlayers.OrderByDescending(p => p.HitCount).FirstOrDefault();
     }
 
-    public void Reset()
+    /// <summary>
+    /// Ends current session and starts a fresh one. Resets boss focus + per-entity HP tracking.
+    /// Preserves NicknameRegistry (names stay) and SummonRepository (summon mappings stay).
+    /// Cumulative dispatcher/capture counters keep growing (used for lifetime accuracy view).
+    /// </summary>
+    public void Reset() => ResetCore();
+
+    private void ResetCore()
     {
         Current.End();
         Current = new Session();
+        _boss.Reset();
+
+        DamageEventCount = 0;
+        DotEventCount = 0;
+        ReattributedDamageCount = 0;
+        HpEventCount = 0;
+        CombatBoundaryEventCount = 0;
+        SummonSpawnEventCount = 0;
     }
 }

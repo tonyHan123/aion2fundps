@@ -4,6 +4,7 @@ using Aion2FunDps.Capture;
 using Aion2FunDps.Core;
 using Aion2FunDps.Protocol;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Aion2FunDps.UI.ViewModels;
 
@@ -34,6 +35,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private long lastTickTotalEvents;
     [ObservableProperty] private long eventsPerSecond;
     [ObservableProperty] private string nickDebugInfo = "nick: 0/0 self, 0/0 other";
+    [ObservableProperty] private bool autoResetOnBoss = true;
+    [ObservableProperty] private bool showAutoResetFlash;
+    private DateTime? _shownAutoResetAt;
+
+    partial void OnAutoResetOnBossChanged(bool value) => _aggregator.AutoResetOnBoss = value;
 
     public MainViewModel(
         DpsAggregator aggregator,
@@ -51,6 +57,14 @@ public partial class MainViewModel : ObservableObject
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         _refreshTimer.Tick += (_, _) => Refresh();
         _refreshTimer.Start();
+    }
+
+    [RelayCommand]
+    private void ResetSession()
+    {
+        _aggregator.Reset();
+        Players.Clear();
+        // Refresh() will repopulate from the fresh session on the next tick
     }
 
     private void Refresh()
@@ -91,6 +105,18 @@ public partial class MainViewModel : ObservableObject
 
         SessionInfo = $"{(int)_aggregator.Current.Duration.TotalSeconds}s";
         NickDebugInfo = $"닉 패킷: SELF {_dispatcher.SelfNickParsed}/{_dispatcher.SelfNickSeen}  OTHER {_dispatcher.OtherNickParsed}/{_dispatcher.OtherNickSeen}";
+
+        // Auto-reset flash: show "보스 감지! 자동 리셋" briefly after auto-reset fires
+        var autoResetAt = _aggregator.LastAutoResetAt;
+        if (autoResetAt.HasValue && autoResetAt != _shownAutoResetAt)
+        {
+            ShowAutoResetFlash = true;
+            _shownAutoResetAt = autoResetAt;
+        }
+        else if (ShowAutoResetFlash && autoResetAt.HasValue && (DateTime.UtcNow - autoResetAt.Value).TotalSeconds > 4)
+        {
+            ShowAutoResetFlash = false;
+        }
         var prevTotal = TotalEvents;
         TotalEvents = _aggregator.DamageEventCount + _aggregator.DotEventCount + _aggregator.HpEventCount
                     + _aggregator.NicknameEventCount + _aggregator.CombatBoundaryEventCount + _aggregator.SummonSpawnEventCount;

@@ -14,49 +14,89 @@ public enum JobClass
 }
 
 /// <summary>
-/// Heuristic class detection from skill names. Aion 2 skill names follow Korean class
-/// naming conventions reliably enough for this approach. Returns Unknown if no match.
+/// Deterministic class detection from skill_code prefix.
+///
+/// Verified against the user-supplied master skill list (2026-04-29):
+/// every Aion 2 KR class skill encodes its class in the high 2 digits
+/// of the skill_code (code / 1_000_000).
+///
+///   11xxxxxx → Gladiator     15xxxxxx → Sorcerer
+///   12xxxxxx → Guardian      16xxxxxx → Spiritmaster
+///   13xxxxxx → Assassin      17xxxxxx → Cleric
+///   14xxxxxx → Archer        18xxxxxx → Songweaver
+///
+/// Prefixes outside [11..18] (legacy 4-digit codes, generic flight/etc.)
+/// are not class-specific → Unknown, simply not counted.
+/// A handful of skills share names across classes (충격 해제 등) but each
+/// class gets its own code, so this scheme attributes them correctly.
 /// </summary>
 public static class JobClassDetector
 {
-    private static readonly (JobClass Class, string[] Keywords)[] KeywordRules = new[]
+    /// <summary>Class implied by a single skill code, or Unknown.</summary>
+    public static JobClass FromSkillCode(uint skillCode) =>
+        (skillCode / 1_000_000u) switch
+        {
+            11 => JobClass.Gladiator,
+            12 => JobClass.Guardian,
+            13 => JobClass.Assassin,
+            14 => JobClass.Archer,
+            15 => JobClass.Sorcerer,
+            16 => JobClass.Spiritmaster,
+            17 => JobClass.Cleric,
+            18 => JobClass.Songweaver,
+            _  => JobClass.Unknown,
+        };
+
+    /// <summary>
+    /// Maps Aion 2's network-protocol jobCode (carried in op=0297 / op=__97
+    /// member records at statsOffset+0) to the meter's JobClass enum.
+    /// Source: A2Viewer's JobMapping.GameToName — each in-game class has 4
+    /// jobCode values covering its specializations (e.g. 13/14/15/16 all
+    /// resolve to 궁성 because base ranger + 3 advanced trees).
+    ///
+    /// This is the authoritative class signal for the leaderboard — works
+    /// at matchmaking-room entry, before any damage tick. The skill-code
+    /// path (<see cref="Detect"/>) is the fallback for cases where the
+    /// roster broadcast arrived without a job byte (truncated packet,
+    /// unknown layout).
+    /// </summary>
+    public static JobClass FromGameJobCode(int jobCode) => jobCode switch
     {
-        (JobClass.Gladiator,    new[] { "내려찍기", "올려치기", "맹타", "광폭", "격노", "유린", "분노", "회전 베기", "쇄도", "베기" }),
-        (JobClass.Guardian,     new[] { "방패", "수호", "도발", "방어 태세", "처단의 일격", "성스러운", "시련의" }),
-        (JobClass.Assassin,     new[] { "단검", "암습", "그림자", "은신", "치명 가격", "급습", "치사", "독" }),
-        (JobClass.Archer,       new[] { "화살", "사격", "올가미", "속사", "조준", "관통", "연사" }),
-        (JobClass.Sorcerer,     new[] { "화염", "냉기", "번개", "메테오", "마력", "원소", "폭발", "빙결", "마법" }),
-        (JobClass.Spiritmaster, new[] { "정령", "소환", "원혼", "영혼", "분신" }),
-        (JobClass.Cleric,       new[] { "치유", "회복", "신성", "축복", "정화", "재림", "부활", "생명" }),
-        (JobClass.Songweaver,   new[] { "진언", "침묵", "법구", "노래", "선율", "공명", "안식", "고무", "찬가" }),
+        >= 5 and <= 8 => JobClass.Gladiator,
+        >= 9 and <= 12 => JobClass.Guardian,
+        >= 13 and <= 16 => JobClass.Archer,
+        >= 17 and <= 20 => JobClass.Assassin,
+        >= 21 and <= 24 => JobClass.Spiritmaster,
+        >= 25 and <= 28 => JobClass.Sorcerer,
+        >= 29 and <= 32 => JobClass.Cleric,
+        >= 33 and <= 36 => JobClass.Songweaver,
+        _ => JobClass.Unknown,
     };
 
-    public static JobClass Detect(IEnumerable<uint> skillCodes, SkillDatabase skills)
+    /// <summary>
+    /// Returns the dominant class across the given skill codes (most casts win).
+    /// Unknown if no class-typed skills observed yet.
+    /// </summary>
+    public static JobClass Detect(IEnumerable<uint> skillCodes)
     {
-        var counts = new Dictionary<JobClass, int>();
-        int matchedCount = 0;
-
+        Span<int> tally = stackalloc int[9];   // index = (int)JobClass
         foreach (var code in skillCodes)
         {
-            var info = skills.Resolve((int)code);
-            if (info == null) continue;
-
-            foreach (var (cls, kws) in KeywordRules)
-            {
-                foreach (var kw in kws)
-                {
-                    if (info.Name.Contains(kw))
-                    {
-                        counts[cls] = counts.GetValueOrDefault(cls) + 1;
-                        matchedCount++;
-                        break;
-                    }
-                }
-            }
+            var cls = FromSkillCode(code);
+            if (cls != JobClass.Unknown)
+                tally[(int)cls]++;
         }
 
-        if (matchedCount == 0) return JobClass.Unknown;
-        return counts.OrderByDescending(kv => kv.Value).First().Key;
+        int bestIdx = 0, bestCount = 0;
+        for (int i = 1; i < tally.Length; i++)
+        {
+            if (tally[i] > bestCount)
+            {
+                bestCount = tally[i];
+                bestIdx = i;
+            }
+        }
+        return bestCount == 0 ? JobClass.Unknown : (JobClass)bestIdx;
     }
 
     public static string GetKoreanName(JobClass jc) => jc switch

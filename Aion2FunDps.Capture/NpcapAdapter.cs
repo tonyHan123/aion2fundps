@@ -16,6 +16,12 @@ public sealed class NpcapAdapter : IDisposable
     public ChannelReader<RawPacket> Reader { get; }
     public CaptureHealthMonitor Health { get; }
     public string SelectedInterface => _device.Description;
+    /// <summary>Diagnostic log file for UDP payloads. When set, every UDP packet's
+    /// source IP + ports + raw payload (first ~256 byte hex) is dumped here for
+    /// post-hoc analysis — used to discover join/leave event packets that
+    /// matchmaking lobbies broadcast over UDP rather than TCP.</summary>
+    public string? UdpDumpPath { get; set; }
+    private readonly object _udpLogLock = new();
 
     public NpcapAdapter(CaptureOptions options)
     {
@@ -66,6 +72,16 @@ public sealed class NpcapAdapter : IDisposable
         var raw = e.GetPacket();
         var data = raw.Data.AsSpan();
 
+        // UDP dump path: BPF filter passes both TCP and UDP. UDP gets logged
+        // (raw bytes for offline analysis) but not piped through the TCP frame
+        // assembler — UDP framing is different (datagram-per-packet, no TCP
+        // sequence reordering needed).
+        if (UdpDumpPath != null && data.Length >= 28
+            && data[12] == 0x08 && data[13] == 0x00 && data[14 + 9] == 17)
+        {
+            DumpUdp(data, raw.Timeval.Date);
+        }
+
         if (!TryExtractTcpPayload(data,
                 out uint sourceIp,
                 out ushort srcPort,
@@ -86,6 +102,51 @@ public sealed class NpcapAdapter : IDisposable
             ArrayPool<byte>.Shared.Return(rented);
             Health.IncrementChannelDrop();
         }
+    }
+
+    private void DumpUdp(ReadOnlySpan<byte> packet, DateTime timestamp)
+    {
+        const int ipStart = 14;
+        byte vhl = packet[ipStart];
+        if ((vhl >> 4) != 4) return;
+        int ipHeaderLen = (vhl & 0x0F) * 4;
+        if (packet.Length < ipStart + ipHeaderLen + 8) return;
+
+        int ipTotalLen = (packet[ipStart + 2] << 8) | packet[ipStart + 3];
+        int ipEnd = Math.Min(packet.Length, ipStart + ipTotalLen);
+
+        uint sourceIp = (uint)((packet[ipStart + 12] << 24)
+                             | (packet[ipStart + 13] << 16)
+                             | (packet[ipStart + 14] << 8)
+                             |  packet[ipStart + 15]);
+
+        int udpStart = ipStart + ipHeaderLen;
+        ushort srcPort = (ushort)((packet[udpStart] << 8) | packet[udpStart + 1]);
+        ushort dstPort = (ushort)((packet[udpStart + 2] << 8) | packet[udpStart + 3]);
+        int payloadOffset = udpStart + 8;
+        int payloadLength = Math.Max(0, ipEnd - payloadOffset);
+        if (payloadLength == 0) return;
+
+        int dumpLen = Math.Min(256, payloadLength);
+        var sb = new System.Text.StringBuilder(dumpLen * 3 + 64);
+        sb.Append(timestamp.ToString("HH:mm:ss.fff"));
+        sb.Append($" srcIp={(sourceIp >> 24) & 0xFF}.{(sourceIp >> 16) & 0xFF}.{(sourceIp >> 8) & 0xFF}.{sourceIp & 0xFF}");
+        sb.Append($" src={srcPort} dst={dstPort} len={payloadLength}: ");
+        for (int i = 0; i < dumpLen; i++)
+        {
+            sb.Append(packet[payloadOffset + i].ToString("x2"));
+            sb.Append(' ');
+        }
+        sb.Append('\n');
+
+        try
+        {
+            lock (_udpLogLock)
+            {
+                System.IO.File.AppendAllText(UdpDumpPath!, sb.ToString());
+            }
+        }
+        catch { }
     }
 
     private static bool TryExtractTcpPayload(

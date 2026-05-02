@@ -5,5 +5,6 @@ public sealed record SummonSpawnInfo(
     int OwnerId,
     int? MobCode,
     long TimestampTicks,
-    uint SourceIpv4
+    uint SourceIpv4,
+    string? OwnerName = null
 ) : IGameEvent;

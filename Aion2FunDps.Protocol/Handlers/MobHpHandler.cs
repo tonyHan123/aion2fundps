@@ -31,7 +31,11 @@ public static class MobHpHandler
         }
 
         if (offset + 4 > body.Length) return false;
-        uint hp = (uint)(body[offset]
+        // uint32 LE → long. The uint cast is preserved so we read the
+        // bytes as unsigned (HP field is non-negative); promotion to
+        // long avoids any future overflow when downstream code does
+        // percentage math (s.MaxHp * 90 / 100 etc.).
+        long hp = (uint)(body[offset]
                        | (body[offset + 1] << 8)
                        | (body[offset + 2] << 16)
                        | (body[offset + 3] << 24));

@@ -82,7 +82,22 @@ public static class OtherNicknameHandler
             break;
         }
 
-        evt = new NicknameInfo(userId, nickname, IsSelf: false, server, job, timestampTicks, sourceIpv4);
+        // Same CP-at-tail-40 rule as SELF_NICK — Aion 2's nickname packets share
+        // a common stat block at the end. Sanity-gate to filter out truncated
+        // packets that would otherwise emit garbage values.
+        int combatPower = 0;
+        if (body.Length >= 50)
+        {
+            int cpOffset = body.Length - 40;
+            int cpRaw = body[cpOffset]
+                      | (body[cpOffset + 1] << 8)
+                      | (body[cpOffset + 2] << 16)
+                      | (body[cpOffset + 3] << 24);
+            if (cpRaw >= 10_000 && cpRaw <= 999_999)
+                combatPower = cpRaw;
+        }
+
+        evt = new NicknameInfo(userId, nickname, IsSelf: false, server, job, combatPower, timestampTicks, sourceIpv4);
         return true;
     }
 }

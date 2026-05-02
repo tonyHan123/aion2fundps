@@ -36,6 +36,26 @@ public static class JsonDataLoader
         return new SkillDatabase(raw.Select(e => new SkillInfo(e.Code, e.Name)));
     }
 
+    public static DungeonDatabase LoadDungeonDatabase(string? overridePath = null)
+    {
+        var path = overridePath ?? Path.Combine(AppContext.BaseDirectory, "Data", "dungeons.json");
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"dungeons.json not found at {path}");
+
+        using var stream = File.OpenRead(path);
+        // dungeons.json is a flat object: { "100001": "포에타", "600122": "무의 요람(보통)", ... }
+        // (extracted from A2Viewer's game_db.json — see tools/extract_dungeons.py).
+        var raw = JsonSerializer.Deserialize<Dictionary<string, string>>(stream);
+        if (raw == null) throw new InvalidDataException("dungeons.json deserialized to null");
+
+        var entries = new List<KeyValuePair<int, string>>(raw.Count);
+        foreach (var (key, name) in raw)
+        {
+            if (int.TryParse(key, out var id)) entries.Add(new(id, name));
+        }
+        return new DungeonDatabase(entries);
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

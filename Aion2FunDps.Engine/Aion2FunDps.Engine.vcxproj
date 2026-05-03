@@ -119,6 +119,8 @@
         <ClInclude Include="src\varint.h" />
         <ClInclude Include="src\lz4_decompress.h" />
         <ClInclude Include="src\frame_assembler.h" />
+        <ClInclude Include="src\compression_detector.h" />
+        <ClInclude Include="src\packet_dispatcher.h" />
         <ClInclude Include="third_party\lz4\lz4.h" />
     </ItemGroup>
 
@@ -127,6 +129,8 @@
         <ClCompile Include="src\varint.cpp" />
         <ClCompile Include="src\lz4_decompress.cpp" />
         <ClCompile Include="src\frame_assembler.cpp" />
+        <ClCompile Include="src\compression_detector.cpp" />
+        <ClCompile Include="src\packet_dispatcher.cpp" />
         <!-- Third-party LZ4 reference (BSD-2-Clause). C source compiled
              with the C++ compiler is fine since the lz4 library is
              written in portable C and uses no C++-incompatible features.

@@ -1,0 +1,28 @@
+; exports.def — Explicit symbol export list for Aion2FunDps.Engine.dll
+;
+; Why a .def file instead of relying on __declspec(dllexport):
+;   - Guarantees stable, undecorated symbol names in the DLL exports table
+;     regardless of compiler / calling convention quirks. P/Invoke from C#
+;     loads symbols by literal name, so name decoration would silently
+;     break linkage on an MSVC version bump.
+;   - Acts as a single-source-of-truth for the public ABI: anything not
+;     listed here is internal and can be refactored freely.
+;   - Tools like dumpbin /exports show this list directly, making it
+;     trivial to verify the DLL surface matches what C# expects.
+;
+; Add new exports here AND add the matching __declspec / extern "C"
+; declaration in include/engine_api.h. Phase 0 starts with the lifecycle
+; quartet; Phases 1-4 add: Aion2Fun_FeedPacket, Aion2Fun_SetOnXxx callbacks,
+; etc. — see TodoWrite list for full plan.
+
+; LIBRARY directive omitted — TargetName from the .vcxproj is the
+; authoritative output name. Including a LIBRARY line here triggers
+; LNK4070 when the names diverge across configs, and the line is
+; ignored by the linker anyway when /OUT: is supplied (it always is
+; under MSBuild).
+
+EXPORTS
+    Aion2Fun_GetVersion         @1
+    Aion2Fun_Init               @2
+    Aion2Fun_Shutdown           @3
+    Aion2Fun_SetLogCallback     @4

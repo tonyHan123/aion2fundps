@@ -15,42 +15,44 @@
         Background="Transparent"
         Topmost="True"
         ShowInTaskbar="False"
-        ResizeMode="CanResizeWithGrip"
+        ResizeMode="CanResize"
         UseLayoutRounding="True"
         Opacity="{Binding WindowOpacity}"
         TextOptions.TextFormattingMode="Display"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
 
-    <Window.InputBindings>
-        <KeyBinding Key="R" Modifiers="Control" Command="{Binding ResetSessionCommand}"/>
-    </Window.InputBindings>
+    <!-- WindowChrome restores the OS-level edge resize hit zones that
+         WindowStyle=None + AllowsTransparency=True strips away. With this,
+         hovering over a window edge changes the cursor to ↔ / ↕ / ⤡ and
+         dragging resizes — same as a normal Windows window. CaptionHeight=0
+         because we have our own custom titlebar (drag handler) and don't
+         want WindowChrome's auto-drag interfering with it. UseAeroCaptionButtons
+         off + GlassFrameThickness=0 because we draw our own ✕ / ⚙ / etc. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome ResizeBorderThickness="6"
+                      CaptionHeight="0"
+                      UseAeroCaptionButtons="False"
+                      GlassFrameThickness="0"
+                      CornerRadius="0"/>
+    </WindowChrome.WindowChrome>
+
+    <!-- Hotkeys are bound at runtime by ApplyHotkeys() (MainWindow.xaml.cs)
+         from AppSettings, so the user can rebind them via the settings panel
+         without restarting the app. -->
 
     <Window.Resources>
+        <!-- Theme brushes / fonts live in Application.Resources via
+             /Themes/Theme.{themeId}.xaml — see App.xaml. ThemeManager
+             swaps that at runtime; DynamicResource lookups in this window
+             walk up to the application scope and pick up the active theme.
+             Window-local resources are only the static converters. -->
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <ui:HexColorToBrushConverter x:Key="HexToBrush"/>
-        <!-- Palette derived from the in-game stat panel: deep ink-navy
-             ground, soft cream body, restrained gold accent for content
-             markers (dungeon name, boss focus), pale cyan accent for the
-             DPS column. Avoid pure white and saturated orange — they
-             read as "amateur dashboard" against the warm in-game UI. -->
-        <SolidColorBrush x:Key="BgBrush" Color="#E60B0F18"/>
-        <SolidColorBrush x:Key="TitleBarBrush" Color="#1AFFFFFF"/>
-        <SolidColorBrush x:Key="BorderBrush" Color="#1FFFFFFF"/>
-        <SolidColorBrush x:Key="DividerBrush" Color="#14FFFFFF"/>
-        <SolidColorBrush x:Key="TextBrush" Color="#E5E7EB"/>
-        <SolidColorBrush x:Key="MutedBrush" Color="#7E94B0"/>
-        <SolidColorBrush x:Key="GoldBrush" Color="#E5C97A"/>
-        <SolidColorBrush x:Key="GoldDimBrush" Color="#A89058"/>
-        <SolidColorBrush x:Key="CyanBrush" Color="#7DD3FC"/>
-        <SolidColorBrush x:Key="AmberBrush" Color="#F4A640"/>
-        <SolidColorBrush x:Key="AmberSoftBrush" Color="#1AF4A640"/>
-        <FontFamily x:Key="UiFont">Pretendard, Malgun Gothic, Segoe UI</FontFamily>
-        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
     </Window.Resources>
 
     <Border x:Name="OuterBorder"
-            Background="{StaticResource BgBrush}"
-            BorderBrush="{StaticResource BorderBrush}"
+            Background="{DynamicResource BgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1"
             CornerRadius="6">
         <Grid>
@@ -63,24 +65,42 @@
             </Grid.RowDefinitions>
 
             <!-- Title bar (drag) -->
-            <Border Grid.Row="0" Padding="12,7"
-                    Background="{StaticResource TitleBarBrush}"
-                    BorderBrush="{StaticResource DividerBrush}"
+            <Border Grid.Row="0" Padding="2,7,12,7"
+                    Background="{DynamicResource TitleBarBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="0,0,0,1"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"
                     MouseMove="TitleBar_MouseMove"
                     MouseLeftButtonUp="TitleBar_MouseLeftButtonUp">
                 <DockPanel>
-                    <TextBlock Text="aion2fundps"
-                               FontFamily="{StaticResource UiFont}"
-                               FontWeight="SemiBold"
-                               FontSize="12"
-                               Foreground="{StaticResource TextBrush}"
-                               VerticalAlignment="Center"/>
+                    <Image DockPanel.Dock="Left"
+                           Source="/Assets/Logo/logo-icon.png"
+                           Width="22" Height="22"
+                           Margin="0,0,8,0"
+                           VerticalAlignment="Center"
+                           SnapsToDevicePixels="True"
+                           RenderOptions.BitmapScalingMode="Fant"/>
+                    <!-- Game-logo-styled wordmark. WPF text + gradient brush +
+                         tiny static DropShadowEffect for the "glowing letters"
+                         feel of the source image. The shadow is OK on a static
+                         element (renders once, not per-frame); the per-row
+                         icon shadow we removed was per-frame. -->
+                    <TextBlock DockPanel.Dock="Left"
+                               VerticalAlignment="Center"
+                               FontFamily="Impact"
+                               FontSize="16"
+                               FontWeight="Bold">
+                        <TextBlock.Effect>
+                            <DropShadowEffect Color="{DynamicResource LogoGlowColor}"
+                                              BlurRadius="8"
+                                              ShadowDepth="0" Opacity="0.55"/>
+                        </TextBlock.Effect>
+                        <Run Text="AION" Foreground="{DynamicResource LogoMainBrush}"/><Run Text="2" FontSize="18" Foreground="{DynamicResource LogoAccentBrush}"/><Run Text="FUN" Foreground="{DynamicResource LogoMainBrush}"/>
+                    </TextBlock>
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
                         <TextBlock Text="🌗"
                                    ToolTip="투명도 (왼쪽일수록 투명)"
-                                   Foreground="{StaticResource MutedBrush}"
+                                   Foreground="{DynamicResource MutedBrush}"
                                    FontSize="11"
                                    VerticalAlignment="Center"
                                    Margin="0,0,4,0"/>
@@ -91,24 +111,28 @@
                                 ToolTip="투명도 (왼쪽일수록 투명)"
                                 VerticalAlignment="Center"
                                 Margin="0,0,8,0"/>
-                        <Button x:Name="MarkBtn" Content="⚑ 0" Click="MarkBtn_Click"
-                                ToolTip="이벤트 마크 — 입장/퇴장/관찰 시점에 클릭하면 시각이 user-marks.log에 기록됨"
-                                MinWidth="38" Height="22" Padding="4,0"
-                                Background="Transparent"
-                                Foreground="#FACC15" BorderThickness="0"
-                                FontSize="11" FontWeight="Bold"/>
+                        <Button x:Name="MarkBtn" Content="📌" Click="MarkBtn_Click"
+                                ToolTip="타임스탬프 기록 (디버그용 — 게임 중 이상 시점 표시)"
+                                Width="26" Height="22" Background="Transparent"
+                                Foreground="{DynamicResource TextBrush}" BorderThickness="0"
+                                FontSize="13"/>
+                        <Button Content="⚙" Click="SettingsBtn_Click"
+                                ToolTip="설정 (테마 / 표시 옵션)"
+                                Width="26" Height="22" Background="Transparent"
+                                Foreground="{DynamicResource TextBrush}" BorderThickness="0"
+                                FontSize="14"/>
                         <Button Content="↻" Command="{Binding ResetSessionCommand}"
                                 ToolTip="세션 리셋 (Ctrl+R)"
                                 Width="26" Height="22" Background="Transparent"
-                                Foreground="{StaticResource TextBrush}" BorderThickness="0"
+                                Foreground="{DynamicResource TextBrush}" BorderThickness="0"
                                 FontSize="14" FontWeight="Bold"/>
                         <Button Content="—" Click="MinBtn_Click"
                                 Width="26" Height="22" Background="Transparent"
-                                Foreground="{StaticResource TextBrush}" BorderThickness="0"
+                                Foreground="{DynamicResource TextBrush}" BorderThickness="0"
                                 FontSize="13"/>
                         <Button Content="✕" Click="CloseBtn_Click"
                                 Width="26" Height="22" Background="Transparent"
-                                Foreground="{StaticResource TextBrush}" BorderThickness="0"
+                                Foreground="{DynamicResource TextBrush}" BorderThickness="0"
                                 FontSize="13"/>
                     </StackPanel>
                 </DockPanel>
@@ -116,7 +140,7 @@
 
             <!-- Auto-reset flash banner (briefly visible after boss detection) -->
             <Border Grid.Row="1" Padding="0"
-                    Background="{StaticResource AmberSoftBrush}"
+                    Background="{DynamicResource AmberSoftBrush}"
                     Visibility="{Binding ShowAutoResetFlash, Converter={StaticResource BoolToVis}}"
                     Panel.ZIndex="10">
                 <Grid>
@@ -124,14 +148,14 @@
                         <ColumnDefinition Width="3"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Rectangle Grid.Column="0" Fill="{StaticResource AmberBrush}"/>
+                    <Rectangle Grid.Column="0" Fill="{DynamicResource AmberBrush}"/>
                     <TextBlock Grid.Column="1"
                                Text="보스 감지 — 세션 자동 리셋"
                                Padding="10,5"
-                               FontFamily="{StaticResource UiFont}"
+                               FontFamily="{DynamicResource UiFont}"
                                FontSize="11"
                                FontWeight="SemiBold"
-                               Foreground="{StaticResource AmberBrush}"
+                               Foreground="{DynamicResource AmberBrush}"
                                VerticalAlignment="Center"/>
                 </Grid>
             </Border>
@@ -140,8 +164,8 @@
                  Hidden while auto-reset flash is showing so the two Row 1 borders
                  don't visually overlap during the brief flash window. -->
             <Border Grid.Row="1" Padding="12,5"
-                    Background="#08FFFFFF"
-                    BorderBrush="{StaticResource DividerBrush}"
+                    Background="{DynamicResource RowOverlayBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="0,0,0,1">
                 <Border.Style>
                     <Style TargetType="Border">
@@ -169,8 +193,8 @@
                                 ToolTip="{Binding ConfidenceIssues}"
                                 Visibility="{Binding IsConfidenceVisible, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="신뢰도"
-                                   Foreground="{StaticResource MutedBrush}"
-                                   FontFamily="{StaticResource UiFont}"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   FontFamily="{DynamicResource UiFont}"
                                    FontSize="11"
                                    Margin="0,0,8,0"
                                    VerticalAlignment="Center"/>
@@ -178,8 +202,8 @@
                                    FontSize="11"
                                    Margin="0,0,5,0" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding ConfidenceScore, StringFormat={}{0:P0}}"
-                                   Foreground="{StaticResource TextBrush}"
-                                   FontFamily="{StaticResource MonoFont}"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   FontFamily="{DynamicResource MonoFont}"
                                    FontSize="11"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"/>
@@ -192,8 +216,8 @@
                                HorizontalAlignment="Right"
                                Margin="20,0,0,0"
                                Text="{Binding FocusInfo}"
-                               Foreground="{StaticResource GoldBrush}"
-                               FontFamily="{StaticResource UiFont}"
+                               Foreground="{DynamicResource GoldBrush}"
+                               FontFamily="{DynamicResource UiFont}"
                                FontSize="11"
                                FontWeight="SemiBold"
                                VerticalAlignment="Center"
@@ -204,8 +228,8 @@
 
             <!-- Column headers — aligned with data rows in Row 3 (same column widths) -->
             <Border Grid.Row="2" Padding="14,6,14,5"
-                    Background="#0DFFFFFF"
-                    BorderBrush="{StaticResource DividerBrush}"
+                    Background="{DynamicResource SectionOverlayBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="0,0,0,1"
                     Visibility="{Binding IsContentVisible, Converter={StaticResource BoolToVis}}">
                 <Grid>
@@ -224,13 +248,13 @@
                                 VerticalAlignment="Center"
                                 Visibility="{Binding HasDungeon, Converter={StaticResource BoolToVis}}">
                         <Rectangle Width="2" Height="11"
-                                   Fill="{StaticResource CyanBrush}"
+                                   Fill="{DynamicResource CyanBrush}"
                                    Opacity="0.7"
                                    Margin="0,0,7,0"
                                    VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding CurrentDungeonName}"
-                                   Foreground="{StaticResource CyanBrush}"
-                                   FontFamily="{StaticResource UiFont}"
+                                   Foreground="{DynamicResource CyanBrush}"
+                                   FontFamily="{DynamicResource UiFont}"
                                    FontSize="11"
                                    FontWeight="Medium"
                                    VerticalAlignment="Center"
@@ -238,24 +262,24 @@
                                    Opacity="0.95"/>
                     </StackPanel>
                     <TextBlock Grid.Column="2" Text="전투력"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontFamily="{StaticResource UiFont}"
+                               Foreground="{DynamicResource MutedBrush}"
+                               FontFamily="{DynamicResource UiFont}"
                                FontSize="11" FontWeight="SemiBold"
                                TextAlignment="Right"/>
                     <TextBlock Grid.Column="3" Text="누적 딜량"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontFamily="{StaticResource UiFont}"
+                               Foreground="{DynamicResource MutedBrush}"
+                               FontFamily="{DynamicResource UiFont}"
                                FontSize="11" FontWeight="SemiBold"
                                TextAlignment="Right"/>
                     <TextBlock Grid.Column="4" Text="DPS"
-                               Foreground="{StaticResource CyanBrush}"
-                               FontFamily="{StaticResource UiFont}"
+                               Foreground="{DynamicResource CyanBrush}"
+                               FontFamily="{DynamicResource UiFont}"
                                FontSize="11" FontWeight="SemiBold"
                                TextAlignment="Right"
                                Opacity="0.95"/>
                     <TextBlock Grid.Column="5" Text="지분율"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontFamily="{StaticResource UiFont}"
+                               Foreground="{DynamicResource MutedBrush}"
+                               FontFamily="{DynamicResource UiFont}"
                                FontSize="11" FontWeight="SemiBold"
                                TextAlignment="Right"/>
                 </Grid>
@@ -267,7 +291,11 @@
                 <ItemsControl ItemsSource="{Binding Players}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Height="32" Margin="0,1">
+                            <Grid Height="32" Margin="0,1"
+                                  Background="Transparent"
+                                  MouseLeftButtonUp="PlayerRow_Click"
+                                  Cursor="Hand"
+                                  ToolTip="클릭 — 스킬 상세 보기">
                                 <!-- Row background: subtle base tint, with a
                                      left-fading green wash for the user's own
                                      row and cyan wash for primary-guess (until
@@ -278,29 +306,13 @@
                                 <Border CornerRadius="3">
                                     <Border.Style>
                                         <Style TargetType="Border">
-                                            <Setter Property="Background" Value="#08FFFFFF"/>
+                                            <Setter Property="Background" Value="{DynamicResource RowOverlayBrush}"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsSelf}" Value="True">
-                                                    <Setter Property="Background">
-                                                        <Setter.Value>
-                                                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                                                                <GradientStop Color="#3322C55E" Offset="0"/>
-                                                                <GradientStop Color="#1422C55E" Offset="0.45"/>
-                                                                <GradientStop Color="#0822C55E" Offset="1"/>
-                                                            </LinearGradientBrush>
-                                                        </Setter.Value>
-                                                    </Setter>
+                                                    <Setter Property="Background" Value="{DynamicResource SelfRowBgBrush}"/>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsPrimaryGuess}" Value="True">
-                                                    <Setter Property="Background">
-                                                        <Setter.Value>
-                                                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                                                                <GradientStop Color="#2E7DD3FC" Offset="0"/>
-                                                                <GradientStop Color="#127DD3FC" Offset="0.45"/>
-                                                                <GradientStop Color="#067DD3FC" Offset="1"/>
-                                                            </LinearGradientBrush>
-                                                        </Setter.Value>
-                                                    </Setter>
+                                                    <Setter Property="Background" Value="{DynamicResource PrimaryGuessRowBgBrush}"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -321,11 +333,11 @@
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsSelf}" Value="True">
                                                     <Setter Property="Visibility" Value="Visible"/>
-                                                    <Setter Property="Fill" Value="#22C55E"/>
+                                                    <Setter Property="Fill" Value="{DynamicResource SelfAccentBrush}"/>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsPrimaryGuess}" Value="True">
                                                     <Setter Property="Visibility" Value="Visible"/>
-                                                    <Setter Property="Fill" Value="#7DD3FC"/>
+                                                    <Setter Property="Fill" Value="{DynamicResource PrimaryGuessAccentBrush}"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -335,7 +347,7 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <Border Background="#553B82F6" CornerRadius="3"
+                                    <Border Background="{DynamicResource DamageBarBrush}" CornerRadius="3"
                                             HorizontalAlignment="Left">
                                         <Border.Width>
                                             <Binding Path="DamageBarPercent"
@@ -353,27 +365,25 @@
                                         <ColumnDefinition Width="50"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding Rank}"
-                                               Foreground="{StaticResource MutedBrush}"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource MutedBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1"
                                                 Orientation="Horizontal"
                                                 VerticalAlignment="Center"
                                                 ToolTip="{Binding TopSkillsTooltip}">
+                                        <!-- DropShadowEffect was removed for performance: WPF software-rendered
+                                             shadows cost GPU per frame and competes with game rendering. The icons
+                                             read fine against the meter's translucent background without one. -->
                                         <Image Source="{Binding ClassIcon}"
                                                Width="24" Height="24"
                                                Margin="0,0,7,0"
                                                VerticalAlignment="Center"
                                                SnapsToDevicePixels="True"
-                                               RenderOptions.BitmapScalingMode="Fant">
-                                            <Image.Effect>
-                                                <DropShadowEffect Color="Black" BlurRadius="4"
-                                                                  ShadowDepth="0" Opacity="0.85"/>
-                                            </Image.Effect>
-                                        </Image>
+                                               RenderOptions.BitmapScalingMode="Fant"/>
                                         <TextBlock Text="{Binding DisplayName}"
-                                                   Foreground="{StaticResource TextBrush}"
-                                                   FontFamily="{StaticResource UiFont}"
+                                                   Foreground="{DynamicResource TextBrush}"
+                                                   FontFamily="{DynamicResource UiFont}"
                                                    FontWeight="SemiBold"
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis"/>
@@ -384,26 +394,26 @@
                                              redundant against the new design. -->
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{Binding CombatPowerDisplay}"
-                                               Foreground="{StaticResource GoldBrush}"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource GoldBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                FontSize="11"
                                                FontWeight="SemiBold"
                                                TextAlignment="Right"
                                                VerticalAlignment="Center"
                                                ToolTip="전투력"/>
                                     <TextBlock Grid.Column="3" Text="{Binding TotalDamage, StringFormat=N0}"
-                                               Foreground="{StaticResource TextBrush}"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource TextBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                TextAlignment="Right" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Column="4" Text="{Binding Dps, StringFormat=N0}"
-                                               Foreground="{StaticResource CyanBrush}"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource CyanBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                TextAlignment="Right" VerticalAlignment="Center"
                                                Opacity="0.92"/>
                                     <TextBlock Grid.Column="5"
                                                Text="{Binding DamageSharePercent, StringFormat={}{0:F1}%}"
-                                               Foreground="{StaticResource TextBrush}"
-                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource TextBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
                                                FontWeight="SemiBold"
                                                TextAlignment="Right" VerticalAlignment="Center"/>
                                 </Grid>
@@ -414,16 +424,16 @@
             </ScrollViewer>
 
             <!-- Footer -->
-            <Border Grid.Row="4" Padding="10,4" Background="#0AFFFFFF"
+            <Border Grid.Row="4" Padding="10,4" Background="{DynamicResource FooterOverlayBrush}"
                     Visibility="{Binding IsContentVisible, Converter={StaticResource BoolToVis}}">
                 <DockPanel>
                     <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,6,0">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="#22C55E"/>
+                                <Setter Property="Fill" Value="{DynamicResource SelfAccentBrush}"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding TickIndicator}" Value="True">
-                                        <Setter Property="Fill" Value="#22C55E"/>
+                                        <Setter Property="Fill" Value="{DynamicResource SelfAccentBrush}"/>
                                         <Setter Property="Opacity" Value="1.0"/>
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding TickIndicator}" Value="False">
@@ -436,8 +446,8 @@
                     <CheckBox IsChecked="{Binding AutoResetOnBoss}"
                               Content="보스 자동리셋"
                               ToolTip="보스 잡거나 와이프 시 결과 화면 그대로 유지. 다음 보스(또는 같은 보스 재도전)를 처음 타격하는 순간 자동 리셋되어 새 누적 시작. 60초 무전투도 안전망으로 리셋."
-                              Foreground="{StaticResource MutedBrush}"
-                              FontFamily="{StaticResource UiFont}"
+                              Foreground="{DynamicResource MutedBrush}"
+                              FontFamily="{DynamicResource UiFont}"
                               FontSize="11" VerticalAlignment="Center"
                               DockPanel.Dock="Right"/>
                     <TextBlock Text="" VerticalAlignment="Center"/>

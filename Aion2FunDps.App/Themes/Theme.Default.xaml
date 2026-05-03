@@ -1,0 +1,72 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ========================================================================
+         Theme: Default (Dark + Cyan/Gold)
+         ========================================================================
+         The original meter palette. Deep ink-navy ground, soft cream body,
+         restrained gold accent for content markers (dungeon name, focused
+         boss), pale cyan for the DPS column. Avoids pure white and saturated
+         orange — those read as "amateur dashboard" against Aion 2's warm UI.
+
+         Theme contract: every key here MUST be defined in every other theme
+         (Theme.SweetPastel.xaml etc.) so DynamicResource lookups resolve in
+         all themes. Keep keys aligned.
+         ======================================================================== -->
+
+    <!-- Surfaces (window / panels / dividers) -->
+    <SolidColorBrush x:Key="BgBrush"            Color="#E60B0F18"/>
+    <SolidColorBrush x:Key="TitleBarBrush"      Color="#1AFFFFFF"/>
+    <SolidColorBrush x:Key="BorderBrush"        Color="#1FFFFFFF"/>
+    <SolidColorBrush x:Key="DividerBrush"       Color="#14FFFFFF"/>
+
+    <!-- Typography colors -->
+    <SolidColorBrush x:Key="TextBrush"          Color="#E5E7EB"/>
+    <SolidColorBrush x:Key="MutedBrush"         Color="#7E94B0"/>
+
+    <!-- Content accents -->
+    <SolidColorBrush x:Key="GoldBrush"          Color="#E5C97A"/>
+    <SolidColorBrush x:Key="GoldDimBrush"       Color="#A89058"/>
+    <SolidColorBrush x:Key="CyanBrush"          Color="#7DD3FC"/>
+    <SolidColorBrush x:Key="AmberBrush"         Color="#F4A640"/>
+    <SolidColorBrush x:Key="AmberSoftBrush"     Color="#1AF4A640"/>
+
+    <!-- Typography -->
+    <FontFamily x:Key="UiFont">Pretendard, Malgun Gothic, Segoe UI</FontFamily>
+    <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
+
+    <!-- Row + section surface overlays. Subtle white-alpha against the dark BG. -->
+    <SolidColorBrush x:Key="RowOverlayBrush"      Color="#08FFFFFF"/>
+    <SolidColorBrush x:Key="SectionOverlayBrush"  Color="#0DFFFFFF"/>
+    <SolidColorBrush x:Key="FooterOverlayBrush"   Color="#0AFFFFFF"/>
+
+    <!-- Per-row signature colors. Self = green leak on dark; primary guess = cyan. -->
+    <SolidColorBrush x:Key="SelfAccentBrush"          Color="#22C55E"/>
+    <SolidColorBrush x:Key="PrimaryGuessAccentBrush"  Color="#7DD3FC"/>
+    <LinearGradientBrush x:Key="SelfRowBgBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#3322C55E" Offset="0"/>
+        <GradientStop Color="#1422C55E" Offset="0.45"/>
+        <GradientStop Color="#0822C55E" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PrimaryGuessRowBgBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#2E7DD3FC" Offset="0"/>
+        <GradientStop Color="#127DD3FC" Offset="0.45"/>
+        <GradientStop Color="#067DD3FC" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- Damage bar fill. Bright blue on dark theme. -->
+    <SolidColorBrush x:Key="DamageBarBrush" Color="#553B82F6"/>
+
+    <!-- Logo (AION2FUN wordmark) — cool blue family. -->
+    <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0"   Color="#F2FAFF"/>
+        <GradientStop Offset="0.55" Color="#B8DEFF"/>
+        <GradientStop Offset="1"   Color="#6FA8E6"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="LogoAccentBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#7CC8FF"/>
+        <GradientStop Offset="1" Color="#1E66D8"/>
+    </LinearGradientBrush>
+    <Color x:Key="LogoGlowColor">#3D8BFF</Color>
+
+</ResourceDictionary>

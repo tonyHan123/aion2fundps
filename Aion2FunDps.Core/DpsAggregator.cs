@@ -90,6 +90,23 @@ public sealed class DpsAggregator
     public DateTime? LastAutoResetAt { get; private set; }
 
     /// <summary>
+    /// Wall-clock timestamp of the most recent boss kill. Used as a
+    /// fallback signal for phase-transition suppression (각성전 / 1인 컨텐츠
+    /// where each phase has DIFFERENT mob_codes so the same-mob_code B5 guard
+    /// can't catch them). When a new boss-grade entity appears within
+    /// <see cref="PhaseTransitionWindow"/> of a previous kill we treat it as
+    /// the next phase of the same fight, not a new encounter (audit 2026-05-04
+    /// 각성전 case: 3 phases → 3 ResetCore in 5min wiped accumulated DPS).
+    /// </summary>
+    private DateTime? _lastBossKilledAt;
+    // Tuning: 60s comfortably covers 각성전 phase-transition cinematics
+    // (kill → spawn-spawn → cinematic → first damage observed at 26s in
+    // the 2026-05-04 wire trace) without erroneously merging genuinely
+    // separate fights. After a clean win the user typically takes >60s
+    // before engaging the next pull anyway.
+    private static readonly TimeSpan PhaseTransitionWindow = TimeSpan.FromSeconds(60);
+
+    /// <summary>
     /// Entity-id of the most recently killed boss-grade entity. Set by
     /// <see cref="OnBossKilled"/>, cleared by <see cref="ResetCore"/> (which
     /// runs on NewBossDetected → next-boss-engage). The UI consults this to
@@ -107,6 +124,20 @@ public sealed class DpsAggregator
     /// packet doesn't carry entityId itself, but is broadcast around encounter start).
     /// </summary>
     private int? _latestEncounterMobCode;
+
+    /// <summary>
+    /// Recent encounter announces (mob_code → timestamp). Used to recover from
+    /// the race where two announces fire in quick succession before any damage
+    /// lands (entering a room with two pre-aggro'd bosses) — the second one
+    /// would otherwise overwrite <see cref="_latestEncounterMobCode"/>, leaving
+    /// the first boss's entityId never linked to its mob_code (wrong banner
+    /// name, missing kill credit). On the first damage to an unknown-mob_code
+    /// target we walk this queue and pick the most recent within 5 seconds.
+    /// Capped at 4 entries — multi-boss rooms cap out around 3.
+    /// (audit 2026-05-04: B10 medium.)
+    /// </summary>
+    private readonly LinkedList<(int MobCode, DateTime At)> _recentAnnounces = new();
+    private static readonly TimeSpan AnnounceMatchWindow = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Matchmaking room id (op=02 97 groupId) the user is currently in. The
@@ -334,8 +365,18 @@ public sealed class DpsAggregator
         int canonical = _registry.Register(nick);
         if (canonical != incoming)
         {
-            if (Current.GetExisting(incoming) != null)
+            // Merge orphan stats (cold-start damage that landed on the raw
+            // entity_id before nickname registration) into the canonical
+            // row. Earlier code DELETED the orphan, losing tank/opener burst
+            // accumulated in the seconds before OTHER_NICK arrived (audit
+            // 2026-05-04: B2 high — DPS undercount visible on leaderboard).
+            var orphan = Current.GetExisting(incoming);
+            if (orphan != null)
+            {
+                var canonStats = Current.GetOrCreate(canonical);
+                canonStats.MergeFrom(orphan);
                 Current.Remove(incoming);
+            }
             if (_partyMembers.Remove(incoming))
                 _partyMembers.Add(canonical);
             _memberLastSeenUtc.Remove(incoming);
@@ -370,6 +411,7 @@ public sealed class DpsAggregator
         // slots → 나트하라 phase entities) and the leaderboard's damage
         // numbers swap to those entities' tiny per-id totals.
         LastKilledBossId = bossId;
+        _lastBossKilledAt = DateTime.UtcNow;
     }
 
     private void OnNewBossDetected(int bossId)
@@ -377,7 +419,23 @@ public sealed class DpsAggregator
         // Link this boss entityId to the most recently announced encounter mob_code.
         // The announce packet (0x01 0x91) typically arrives just before the boss's
         // first MOB_HP packet; if it didn't (multi-pull/stale encounter), no link.
-        if (_latestEncounterMobCode is { } mc)
+        // Queue fallback handles the "two announces fire before any damage" race
+        // (multi-boss room) — pick the most recent announce within the match
+        // window so both entityIds get linked correctly.
+        var now = DateTime.UtcNow;
+        int? linked = _latestEncounterMobCode;
+        if (!linked.HasValue && _recentAnnounces.Count > 0)
+        {
+            for (var node = _recentAnnounces.Last; node != null; node = node.Previous)
+            {
+                if (now - node.Value.At <= AnnounceMatchWindow)
+                {
+                    linked = node.Value.MobCode;
+                    break;
+                }
+            }
+        }
+        if (linked is { } mc)
             _entities.Register(bossId, mc);
 
         if (!AutoResetOnBoss)
@@ -398,6 +456,27 @@ public sealed class DpsAggregator
             LogResetDecision(bossId, "OtherAliveBoss", reset: false);
             return;
         }
+
+        // Multi-id phase-boss suppression (e.g., 나트하라). The previous phase
+        // entity went HP→0, OnBossKilled stamped LastKilledBossId. Then the
+        // server spawns the next phase as a new entity_id sharing the same
+        // mob_code. ResetCore here would clear LastKilledBossId AND wipe the
+        // frozen DPS rows, so the user's hard-earned phase-1 numbers vanish
+        // mid-fight. Treat this as a continuation, not a new encounter
+        // (audit 2026-05-04: B5 high — wire-confirmed pattern from kill-display
+        // memory project_dungeons_bosses_mapping).
+        if (LastKilledBossId is int killedId
+            && _entities.GetMobCode(killedId) is int killedMob
+            && _entities.GetMobCode(bossId) is int newMob
+            && killedMob == newMob)
+        {
+            LogResetDecision(bossId, "SameMobCodePhaseTransition", reset: false);
+            return;
+        }
+
+        // (Removed "RecentKillPhaseTransition" 60s window — based on wrong
+        // premise that 각성전 was multi-phase. Actually each 각성전 difficulty
+        // level is a separate fight, so reset between them is correct.)
 
         // First hit on a NEW boss (different entity, no other boss alive):
         // full reset so the next fight starts clean.
@@ -573,10 +652,20 @@ public sealed class DpsAggregator
                     TouchMember(actor);
 
                     // Cold-start party detection: any actor landing damage on
-                    // a confirmed boss-grade entity is a party member.
+                    // a confirmed boss-grade entity is a party member —
+                    // BUT only add to _partyMembers when we already have a
+                    // nickname-resolved canonical for them. Without the
+                    // GetEntry gate, a distant member's dungeon entity_id
+                    // (not yet aliased to their lobby canonical via
+                    // OTHER_NICK) gets added under the raw id, producing a
+                    // duplicate row alongside the lobby canonical entry the
+                    // matchmaking roster already added (audit 2026-05-04:
+                    // B12 medium). Once OTHER_NICK arrives, RegisterCanonical's
+                    // orphan-merge folds the damage onto the canonical row.
                     if (_boss.IsBossMode
                         && _boss.FocusedEntityId == dmg.TargetId
-                        && !_partyMembers.Contains(actor))
+                        && !_partyMembers.Contains(actor)
+                        && _registry.GetEntry(actor) != null)
                     {
                         _partyMembers.Add(actor);
                         _roomTracker.AddLiveMember(actor);
@@ -660,41 +749,90 @@ public sealed class DpsAggregator
                         // Cold start: SelfUserId not yet identified (no SELF_NICK
                         // mid-session, no multi-room overlap, no solo Strong yet).
                         //
-                        // Strong (op=02 97) fires only for the user's own room
-                        // — verified against A2Viewer source 2026-05-03. Trust
-                        // it unconditionally: bootstrap _partyMembers from the
-                        // roster, set _currentMatchmakingRoom, REPLACE on subsequent
-                        // updates. Once SelfUserId is later set (RecordSelfNickCandidates
-                        // accumulates inference even during cold-start), the
-                        // regular 4-case path takes over.
+                        // Strong (op=02 97) fires only for the user's own room —
+                        // verified against A2Viewer source 2026-05-03. Trust it
+                        // unconditionally and REPLACE _partyMembers from it.
                         //
-                        // Weak (op=01 97) is NOT trusted in cold-start. Lobby-
-                        // preview Weak packets can carry adjacent rooms' rosters,
-                        // and without SelfUserId we can't pick the correct block.
-                        // The dispatcher's hasSelf gate uses SelfNicknameHandler.LastSelfUserId
-                        // which only fires on SELF_NICK — already null in cold-
-                        // start. Wait for Strong to bootstrap.
+                        // Weak (op=01 97) carries lobby-browser previews of OTHER
+                        // rooms in cold-start risk — without SelfUserId we can't
+                        // pick the right block. BUT once a Strong has set
+                        // _currentMatchmakingRoom, a Weak whose groupId matches
+                        // that room is unambiguously about our room (the
+                        // dispatcher already pinned it via _currentLobbyRoomId).
+                        // Trust those for kick / joiner-leave detection — without
+                        // it, getting kicked in cold-start leaves the kicker's
+                        // room rendered in the meter forever (사용자 보고
+                        // 2026-05-04: "원정 대기방에서 강퇴당했는데 안없어짐").
                         //
-                        // Without this branch the meter stays empty when the user
-                        // joins their first 4-man room from a fresh meter start
-                        // (사용자 보고 2026-05-03: "성역 대기방 들어갔는데 사람들
-                        // 미터기에 안뜸"). Score-based self inference only converges
-                        // on solo Strong (single-member roster) or multi-room
-                        // overlap; a stable 4-man room from session start hits
-                        // neither.
-                        if (roster.Confidence != RosterConfidence.Strong)
+                        // Cold-start REPLACE doesn't have a "self exemption" —
+                        // we don't know who self is — so a kick that drops the
+                        // user from members will drop them from _partyMembers
+                        // too. That's correct: a kicked user is no longer in the
+                        // room. The Strong of their next room replaces state
+                        // again via the COLDSTART_BOOT path.
+                        bool coldNewRoom = !currentRoom.HasValue || currentRoom.Value != rosterRoom;
+
+                        bool coldTrust;
+                        string coldLabel;
+                        if (roster.Confidence == RosterConfidence.Strong)
                         {
-                            LogRosterTransition(roster, "COLDSTART_WEAK");
+                            coldTrust = true;
+                            coldLabel = coldNewRoom ? "COLDSTART_BOOT" : "COLDSTART_UPD";
+                        }
+                        else if (currentRoom.HasValue && rosterRoom == currentRoom.Value)
+                        {
+                            // Weak for our pinned current room — trust as update.
+                            coldTrust = true;
+                            coldLabel = "COLDSTART_WEAK_UPD";
+                        }
+                        else
+                        {
+                            // Weak for some other room (lobby browse) — ignore.
+                            coldTrust = false;
+                            coldLabel = "COLDSTART_WEAK";
+                        }
+
+                        LogRosterTransition(roster, coldLabel);
+
+                        if (!coldTrust)
+                        {
                             NicknameEventCount += roster.Members.Count;
                             break;
                         }
 
-                        bool coldNewRoom = !currentRoom.HasValue || currentRoom.Value != rosterRoom;
-                        LogRosterTransition(roster, coldNewRoom ? "COLDSTART_BOOT" : "COLDSTART_UPD");
                         if (coldNewRoom)
                         {
                             WipeMembership();
                             _currentMatchmakingRoom = rosterRoom;
+                        }
+
+                        // Cold-start kick detection: if the only id missing from
+                        // the incoming roster has been observed across multiple
+                        // matchmaking rooms in this session, it's almost
+                        // certainly self (other players don't move between
+                        // rooms). Treat as KICKED — wipe everything, clear
+                        // _currentMatchmakingRoom — instead of REPLACE which
+                        // would only remove self and leave the kicker's room
+                        // members rendered in the meter forever (사용자 보고
+                        // 2026-05-04: "원정 대기방 들어갔다가 나왔는데 사람들
+                        // 안없어짐"). Only fires when SAME room (not on initial
+                        // BOOT where _partyMembers was empty anyway).
+                        if (!coldNewRoom && _partyMembers.Count > 0)
+                        {
+                            var coldNewSetCheck = new HashSet<int>(memberCanonicalIds);
+                            var dropped = _partyMembers.Where(id => !coldNewSetCheck.Contains(id)).ToList();
+                            if (dropped.Count == 1)
+                            {
+                                var droppedNick = _registry.GetName(dropped[0]);
+                                if (_registry.IsMultiRoomCandidate(droppedNick))
+                                {
+                                    LogRosterTransition(roster, "COLDSTART_KICKED");
+                                    WipeMembership();
+                                    _currentMatchmakingRoom = null;
+                                    NicknameEventCount += roster.Members.Count;
+                                    break;
+                                }
+                            }
                         }
 
                         var coldNewSet = new HashSet<int>(memberCanonicalIds);
@@ -868,11 +1006,19 @@ public sealed class DpsAggregator
                         }
                         catch { }
                     }
+                    // Decouple membership wipe from room-id clear:
+                    //   - membership wipe is gated by LastKilledBossId so the
+                    //     post-kill leaderboard stays visible after dungeon exit
+                    //   - _currentMatchmakingRoom is ALWAYS cleared so
+                    //     EvictStaleMembers can do its job and so the next
+                    //     Strong roster takes the COLDSTART_BOOT/ROOM_CHANGE
+                    //     path correctly (audit 2026-05-04: B11 medium —
+                    //     previously the room id stayed pinned forever after a
+                    //     successful clear, blocking new-room detection until
+                    //     the next Strong arrived).
                     if (!LastKilledBossId.HasValue)
-                    {
                         WipeMembership();
-                        _currentMatchmakingRoom = null;
-                    }
+                    _currentMatchmakingRoom = null;
                 }
                 break;
 
@@ -901,16 +1047,21 @@ public sealed class DpsAggregator
 
             case SummonSpawnInfo sp:
                 {
-                    // Owner-name → canonical via FindUserIdByName. Without
-                    // resolution we leave damage to fall back on raw actor_id;
-                    // the safer default while waiting for the matching
-                    // OTHER_NICK / SELF_NICK packet.
+                    // Owner resolution priority:
+                    //   1) OwnerName → canonical (most authoritative when present)
+                    //   2) OwnerId  → canonical alias (works even before nickname
+                    //      arrives — earlier code ignored OwnerId entirely, so
+                    //      pet damage from Bard/Cleric/Sorc summons silently
+                    //      vanished until the owner's OTHER_NICK arrived;
+                    //      audit 2026-05-04: B3 high)
+                    //   3) Fall back to raw actor_id at damage time (existing).
+                    int? owner = null;
                     if (!string.IsNullOrEmpty(sp.OwnerName))
-                    {
-                        var resolved = _registry.FindUserIdByName(sp.OwnerName);
-                        if (resolved.HasValue)
-                            _summons.Register(sp.SummonId, resolved.Value);
-                    }
+                        owner = _registry.FindUserIdByName(sp.OwnerName);
+                    if (owner is null && sp.OwnerId != 0)
+                        owner = _registry.ResolveCanonical(sp.OwnerId) ?? sp.OwnerId;
+                    if (owner.HasValue)
+                        _summons.Register(sp.SummonId, owner.Value);
                     if (sp.MobCode.HasValue)
                         _entities.Register(sp.SummonId, sp.MobCode.Value);
                     SummonSpawnEventCount++;
@@ -919,6 +1070,10 @@ public sealed class DpsAggregator
 
             case EncounterAnnouncement enc:
                 _latestEncounterMobCode = enc.MobCode;
+                // Append to recent queue (cap 4) so the second-of-two-announces
+                // case (multi-boss room) doesn't lose the first announce.
+                _recentAnnounces.AddLast((enc.MobCode, DateTime.UtcNow));
+                while (_recentAnnounces.Count > 4) _recentAnnounces.RemoveFirst();
                 LinkFocusedBossToEncounter(enc.MobCode);
                 break;
         }
@@ -1007,13 +1162,15 @@ public sealed class DpsAggregator
         // Target is enemy. Now classify the actor.
 
         // If raw actor has a known mob_code, it's a non-player entity — pet,
-        // summon, or boss/mob. Only count its damage when SummonRepository
-        // maps it back to a registered player owner.
+        // summon, or boss/mob. Count its damage when SummonRepository maps
+        // it back to ANY owner id (registered nickname not required —
+        // RegisterCanonical's orphan-merge pass folds the damage onto the
+        // owner's canonical row once the OTHER_NICK arrives, so requiring
+        // the registry entry up-front silently dropped pet damage during
+        // the cold-start window; audit 2026-05-04: B3/H5 medium).
         if (_entities.GetMobCode(rawActorId).HasValue)
         {
-            if (_summons.GetOwner(rawActorId) is int owner && _registry.GetEntry(owner) != null)
-                return true;
-            return false;
+            return _summons.GetOwner(rawActorId).HasValue;
         }
 
         if (_registry.GetEntry(effectiveActorId) != null)
@@ -1076,6 +1233,53 @@ public sealed class DpsAggregator
         }
     }
 
+    /// <summary>
+    /// Atomic snapshot of boss + reset state for the UI's per-tick render.
+    /// Without this, MainViewModel.Refresh reads FocusedEntityId, IsBossMode,
+    /// GetEntity(focusId), and LastKilledBossId across separate calls — the
+    /// capture thread can fire OnBossKilled → ResetCore between any two reads,
+    /// producing a stale focusId whose entity was just removed (NullReferenceException
+    /// at entity.MaxHp). This single locked read keeps the four fields coherent.
+    /// </summary>
+    public sealed record BossSnapshot(
+        int? FocusedEntityId,
+        bool IsBossMode,
+        long FocusedCurrentHp,
+        long FocusedMaxHp,
+        int? FocusedMobCode,
+        int? LastKilledBossId);
+
+    public BossSnapshot SnapshotBoss()
+    {
+        lock (_stateLock)
+        {
+            int? focus = _boss.FocusedEntityId;
+            bool isMode = _boss.IsBossMode;
+            long curHp = 0, maxHp = 0;
+            int? mobCode = null;
+            if (focus.HasValue)
+            {
+                var entity = _boss.GetEntity(focus.Value);
+                if (entity != null)
+                {
+                    curHp = entity.CurrentHp;
+                    maxHp = entity.MaxHp;
+                }
+                else
+                {
+                    // Focus id was set but entity already evicted — treat as no-focus
+                    // for this tick instead of returning a stale id the UI would
+                    // null-deref on.
+                    focus = null;
+                    isMode = false;
+                }
+                if (focus.HasValue)
+                    mobCode = _entities.GetMobCode(focus.Value);
+            }
+            return new BossSnapshot(focus, isMode, curHp, maxHp, mobCode, LastKilledBossId);
+        }
+    }
+
     public IEnumerable<PlayerStats> BossDamageDealers(int bossId)
     {
         foreach (var p in Current.AllPlayers)
@@ -1121,6 +1325,22 @@ public sealed class DpsAggregator
     /// </summary>
     public void ResetForNewRoom()
     {
+        // Diagnostic: this is the ONLY code path that wipes _partyMembers
+        // without leaving a transition log entry (because it's a user action,
+        // not a wire event). Log before-state so future bug reports of "members
+        // disappeared without explanation" can be attributed (or ruled out)
+        // against accidental ↻ click / Ctrl+R press in chat.
+        if (RosterDebugLogPath != null)
+        {
+            try
+            {
+                string partyBefore = string.Join(",", _partyMembers);
+                System.IO.File.AppendAllText(RosterDebugLogPath,
+                    $"{DateTime.Now:HH:mm:ss.fff} MANUAL_RESET    cur={_currentMatchmakingRoom?.ToString() ?? "null"} partyBefore=[{partyBefore}]\n");
+            }
+            catch { }
+        }
+
         _partyMembers.Clear();
         _memberLastSeenUtc.Clear();
         _roomTracker.Clear();
@@ -1129,6 +1349,24 @@ public sealed class DpsAggregator
 
     private void ResetCore()
     {
+        // Diagnostic: log every ResetCore invocation with caller context so we
+        // can trace mid-fight damage wipes. Log line 2026-05-04: pre values in
+        // DMG_APPLIED keep going to 0 within a single boss fight even though
+        // only ONE NEW_BOSS_FIRED + RESET_FIRED is logged. Some path is
+        // calling ResetCore without LogResetDecision. This stack trace dump
+        // (3 frames is enough to identify caller) catches it next reproduction.
+        if (_boss.DiagnosticLogPath is string p)
+        {
+            try
+            {
+                var st = new System.Diagnostics.StackTrace(1, false);
+                var caller = st.FrameCount > 0 ? st.GetFrame(0)?.GetMethod()?.Name ?? "?" : "?";
+                var caller2 = st.FrameCount > 1 ? st.GetFrame(1)?.GetMethod()?.Name ?? "?" : "?";
+                System.IO.File.AppendAllText(p,
+                    $"{DateTime.Now:HH:mm:ss.fff} → RESET_CORE       caller={caller}<-{caller2} partyMembers={_partyMembers.Count} totalDamageBefore={Current.AllPlayers.Sum(x => x.TotalDamage)}\n");
+            }
+            catch { }
+        }
         Current.End();
         Current = new Session();
         _boss.Reset();

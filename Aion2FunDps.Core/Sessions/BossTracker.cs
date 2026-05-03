@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using Aion2FunDps.Core.Models;
 
@@ -80,7 +81,12 @@ public sealed class BossTracker
         catch { }
     }
 
-    private readonly Dictionary<int, EntityState> _entities = new();
+    // ConcurrentDictionary so the UI thread's `Boss.GetEntity(focusId)` and
+    // `IsBossMode` reads can race the capture thread's OnHpUpdate / UpdateFocus
+    // writes safely. The plain Dictionary that was here previously could
+    // corrupt its bucket array under typical boss-fight HP-update rates
+    // (audit 2026-05-04: HIGH severity — same class as NicknameRegistry).
+    private readonly ConcurrentDictionary<int, EntityState> _entities = new();
 
     public int? FocusedEntityId { get; private set; }
     /// <summary>
@@ -119,6 +125,14 @@ public sealed class BossTracker
         bool isNewEntity = !_entities.ContainsKey(hp.MobId);
         var s = GetOrCreate(hp.MobId);
 
+        // Capture pre-update MaxHp so the wipe-detection condition below can
+        // distinguish "HP returned to ~full" (real wipe) from "MaxHp grew due
+        // to boss enrage / phase rescale" (the new MaxHp is just larger, not
+        // a respawn). Without this snapshot, a boss whose MaxHp jumps from
+        // 60M → 100M mid-fight reads as `prevHp < newMaxHp*0.9 && curHp >=
+        // newMaxHp*0.95` and fires a spurious BossReset (audit 2026-05-04:
+        // B9 medium).
+        long prevMaxHp = s.MaxHp;
         long prevHp = s.CurrentHp;
         s.CurrentHp = hp.CurrentHp;
         if (hp.CurrentHp > s.MaxHp) s.MaxHp = hp.CurrentHp;
@@ -155,6 +169,7 @@ public sealed class BossTracker
         if (!isNewEntity
             && prevHp > 0
             && s.MaxHp > 0
+            && prevMaxHp == s.MaxHp  // MaxHp didn't grow this packet (rules out enrage rescale)
             && IsBossGrade(hp.MobId, s)
             && s.IncomingDamageEvents > 0
             && prevHp < s.MaxHp * 90 / 100

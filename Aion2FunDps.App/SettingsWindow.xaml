@@ -1,0 +1,196 @@
+<Window x:Class="Aion2FunDps.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="설정"
+        Width="380" Height="420"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+
+    <Border Background="{DynamicResource BgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title bar (drag) -->
+            <Border Grid.Row="0" Padding="14,9"
+                    Background="{DynamicResource TitleBarBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <DockPanel>
+                    <TextBlock Text="설정"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontWeight="SemiBold"
+                               FontSize="13"
+                               Foreground="{DynamicResource TextBrush}"
+                               VerticalAlignment="Center"/>
+                    <Button DockPanel.Dock="Right"
+                            Content="✕" Click="CloseBtn_Click"
+                            Width="26" Height="22"
+                            Background="Transparent"
+                            Foreground="{DynamicResource TextBrush}"
+                            BorderThickness="0"
+                            FontSize="13"
+                            HorizontalAlignment="Right"/>
+                </DockPanel>
+            </Border>
+
+            <!-- Body -->
+            <ScrollViewer Grid.Row="1" Padding="20,16" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="테마"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedBrush}"
+                               Margin="0,0,0,8"/>
+
+                    <!-- Theme list. Populated programmatically from
+                         ThemeManager.AvailableThemes so adding a new theme
+                         only requires creating Themes/Theme.{Id}.xaml +
+                         appending to AvailableThemes. -->
+                    <ItemsControl x:Name="ThemeList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <RadioButton GroupName="Theme"
+                                             Tag="{Binding Id}"
+                                             IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                             Checked="ThemeRadio_Checked"
+                                             Margin="0,4,0,4"
+                                             Foreground="{DynamicResource TextBrush}"
+                                             FontFamily="{DynamicResource UiFont}"
+                                             FontSize="12">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextBrush}"/>
+                                        <TextBlock Text="{Binding Description}"
+                                                   Foreground="{DynamicResource MutedBrush}"
+                                                   FontSize="11"
+                                                   Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                </RadioButton>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Border Height="1"
+                            Background="{DynamicResource DividerBrush}"
+                            Margin="0,16,0,16"/>
+
+                    <TextBlock Text="단축키"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedBrush}"
+                               Margin="0,0,0,8"/>
+
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="130"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="딜 미터기 리셋"
+                                   FontFamily="{DynamicResource UiFont}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                                x:Name="ResetHotkeyBtn"
+                                Click="HotkeyBtn_Click"
+                                Tag="Reset"
+                                Height="26"
+                                Background="Transparent"
+                                Foreground="{DynamicResource TextBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1"
+                                FontFamily="{DynamicResource UiFont}"
+                                FontSize="11"
+                                HorizontalContentAlignment="Center"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="130"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="최소화"
+                                   FontFamily="{DynamicResource UiFont}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1"
+                                x:Name="MinimizeHotkeyBtn"
+                                Click="HotkeyBtn_Click"
+                                Tag="Minimize"
+                                Height="26"
+                                Background="Transparent"
+                                Foreground="{DynamicResource TextBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1"
+                                FontFamily="{DynamicResource UiFont}"
+                                FontSize="11"
+                                HorizontalContentAlignment="Center"/>
+                    </Grid>
+
+                    <TextBlock Text="버튼 클릭 후 원하는 키 조합을 누르세요. Esc로 취소, Backspace로 해제."
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="10"
+                               Foreground="{DynamicResource MutedBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Footer -->
+            <Border Grid.Row="2"
+                    Padding="14,10"
+                    Background="{DynamicResource TitleBarBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,1,0,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left"
+                               Text="변경사항은 즉시 적용됩니다."
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="10"
+                               Foreground="{DynamicResource MutedBrush}"
+                               VerticalAlignment="Center"/>
+                    <Button DockPanel.Dock="Right"
+                            Content="닫기"
+                            Click="CloseBtn_Click"
+                            Width="64" Height="26"
+                            Background="Transparent"
+                            Foreground="{DynamicResource TextBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            FontFamily="{DynamicResource UiFont}"
+                            FontSize="11"/>
+                    <Button DockPanel.Dock="Right"
+                            Content="정보"
+                            Click="AboutBtn_Click"
+                            Width="64" Height="26"
+                            Margin="0,0,8,0"
+                            Background="Transparent"
+                            Foreground="{DynamicResource MutedBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            FontFamily="{DynamicResource UiFont}"
+                            FontSize="11"
+                            ToolTip="버전 / 라이선스 / 저장소"/>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

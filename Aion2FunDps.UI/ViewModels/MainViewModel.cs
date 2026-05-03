@@ -13,6 +13,12 @@ namespace Aion2FunDps.UI.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     private readonly DpsAggregator _aggregator;
+    /// <summary>
+    /// Exposes the underlying aggregator so the App layer can open auxiliary
+    /// windows (skill-breakdown popup) that need PlayerStats snapshots without
+    /// going through row VMs.
+    /// </summary>
+    public DpsAggregator Aggregator => _aggregator;
     private readonly NpcapAdapter _capture;
     private readonly FrameAssembler _assembler;
     private readonly PacketDispatcher _dispatcher;
@@ -133,25 +139,30 @@ public partial class MainViewModel : ObservableObject
         var issues = string.Join(", ", acc.Issues());
         ConfidenceIssues = string.IsNullOrEmpty(issues) ? "(이상 없음)" : issues;
 
-        // Boss / focus banner
-        if (_aggregator.Boss.FocusedEntityId.HasValue)
+        // Boss / focus banner — read all four boss-state fields atomically
+        // under the aggregator's state lock. The earlier separate property
+        // reads could race a capture-thread OnBossKilled → ResetCore between
+        // FocusedEntityId.HasValue and GetEntity(focusId), throwing
+        // NullReferenceException at entity.MaxHp when the focus id was set
+        // but the underlying entity got evicted mid-tick (audit 2026-05-04).
+        var bossSnap = _aggregator.SnapshotBoss();
+        if (bossSnap.FocusedEntityId.HasValue)
         {
-            int focusId = _aggregator.Boss.FocusedEntityId.Value;
-            var entity = _aggregator.Boss.GetEntity(focusId)!;
             HasFocusedTarget = true;
-            IsBossMode = _aggregator.Boss.IsBossMode;
-            BossHpPercent = entity.MaxHp > 0 ? (double)entity.CurrentHp / entity.MaxHp * 100 : 100;
+            IsBossMode = bossSnap.IsBossMode;
+            BossHpPercent = bossSnap.FocusedMaxHp > 0
+                ? (double)bossSnap.FocusedCurrentHp / bossSnap.FocusedMaxHp * 100
+                : 100;
 
-            // Look up boss name: entity_id → mob_code → MobInfo.Name
             string bossName = "보스";
-            if (_aggregator.Entities.GetMobCode(focusId) is { } mobCode)
+            if (bossSnap.FocusedMobCode is { } mobCode)
             {
                 var mobInfo = _mobDb.GetByCode(mobCode);
                 if (mobInfo != null) bossName = mobInfo.Name;
             }
 
             FocusInfo = IsBossMode
-                ? $"⚔️ {bossName}  HP {FormatHp(entity.CurrentHp)} / {FormatHp(entity.MaxHp)}  ({BossHpPercent:F0}%)"
+                ? $"⚔️ {bossName}  HP {FormatHp(bossSnap.FocusedCurrentHp)} / {FormatHp(bossSnap.FocusedMaxHp)}  ({BossHpPercent:F0}%)"
                 : string.Empty;
         }
         else
@@ -199,8 +210,10 @@ public partial class MainViewModel : ObservableObject
         // 나트하라), and without this hold GetDamageToTarget(focus) returns
         // tiny per-phase totals instead of the kill-moment numbers.
         // Cleared automatically by ResetCore on NewBossDetected → boss N+1.
-        int? bossTargetId = _aggregator.LastKilledBossId
-            ?? (_aggregator.Boss.IsBossMode ? _aggregator.Boss.FocusedEntityId : null);
+        // Reuse the bossSnap from earlier for coherent reads — avoid another
+        // round of separate _aggregator.* property accesses that could race.
+        int? bossTargetId = bossSnap.LastKilledBossId
+            ?? (bossSnap.IsBossMode ? bossSnap.FocusedEntityId : null);
         var crew = _aggregator.OurCrew()
             .Select(p => bossTargetId.HasValue
                 ? (Player: p, Damage: p.GetDamageToTarget(bossTargetId.Value), Dps: p.GetDpsToTarget(bossTargetId.Value))

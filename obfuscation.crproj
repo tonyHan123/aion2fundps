@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ConfuserEx 2 obfuscation rules for v0.1.0-alpha Release builds.
+
+  Why this config (vs the default "aggressive" preset):
+    - WPF data bindings reference VM properties by name. CommunityToolkit.Mvvm's
+      [ObservableProperty] generates the public property name from the field
+      via source generation; renaming the generated property breaks every
+      Binding in MainWindow.xaml. We exclude all VMs from rename.
+    - AppSettings is JSON-serialized via System.Text.Json, which keys on
+      property names. Renaming would invalidate every existing settings.json.
+    - Resource encryption is the high-value protection — it's what stops
+      ILSpy from showing skills_tk.json / skill_icon_overrides.json as
+      readable strings. Apply broadly.
+    - Anti-tamper / anti-debug raise the cost for a casual reverser without
+      breaking legitimate runtime behavior.
+
+  What's deliberately NOT enabled:
+    - "ref proxy" (proxy method calls) — slows hot paths, our packet
+      dispatcher runs millions of times.
+    - "invalid metadata" — known to break some .NET 10 reflection paths;
+      revisit after alpha if RE traffic warrants.
+
+  This file is the input to Confuser.CLI.exe; see build-release.ps1.
+-->
+<project outputDir="bin\obfuscated" baseDir="." xmlns="http://confuser.codeplex.com">
+
+    <!-- ========================================================================
+         Module list. Modules are processed in declared order. The exe goes
+         last so its references to Core/Protocol/etc. resolve to the
+         already-obfuscated dlls.
+         ======================================================================== -->
+    <module path="bin\Release\net10.0\Aion2FunDps.Core.dll">
+        <rule pattern="true" preset="aggressive" inherit="false">
+            <protection id="anti debug" />
+            <protection id="anti dump" />
+            <protection id="anti tamper" />
+            <protection id="constants" />
+            <protection id="ctrl flow" />
+            <protection id="rename" />
+            <protection id="resources" />
+        </rule>
+        <!-- Public model types crossing assembly boundaries; renaming breaks
+             reflection-based equality / Equals overrides used in tests. -->
+        <rule pattern="namespace('Aion2FunDps.Core.Models')" inherit="false">
+            <protection id="rename" action="remove" />
+        </rule>
+    </module>
+
+    <module path="bin\Release\net10.0\Aion2FunDps.Protocol.dll">
+        <rule pattern="true" preset="aggressive" inherit="false">
+            <protection id="anti debug" />
+            <protection id="anti tamper" />
+            <protection id="constants" />
+            <protection id="ctrl flow" />
+            <protection id="rename" />
+            <protection id="resources" />
+        </rule>
+        <!-- Public IGameEvent records are matched by type across the boundary
+             into Core/App; renaming makes pattern-matching fail silently. -->
+        <rule pattern="namespace('Aion2FunDps.Core.Models')" inherit="false">
+            <protection id="rename" action="remove" />
+        </rule>
+    </module>
+
+    <module path="bin\Release\net10.0\Aion2FunDps.Capture.dll">
+        <rule pattern="true" preset="aggressive" inherit="false">
+            <protection id="anti debug" />
+            <protection id="anti tamper" />
+            <protection id="constants" />
+            <protection id="ctrl flow" />
+            <protection id="rename" />
+        </rule>
+    </module>
+
+    <module path="bin\Release\net10.0\Aion2FunDps.Storage.dll">
+        <rule pattern="true" preset="aggressive" inherit="false">
+            <protection id="anti tamper" />
+            <protection id="constants" />
+            <protection id="rename" />
+            <protection id="resources" />
+        </rule>
+    </module>
+
+    <module path="bin\Release\net10.0-windows\Aion2FunDps.UI.dll">
+        <rule pattern="true" preset="aggressive" inherit="false">
+            <protection id="anti tamper" />
+            <protection id="constants" />
+            <protection id="ctrl flow" />
+        </rule>
+        <!-- View-models are referenced by name from XAML bindings + by
+             [ObservableProperty]'s source-gen output. Renaming any of these
+             instantly breaks every binding in the meter. Skip rename for
+             ViewModels namespace entirely. -->
+        <rule pattern="namespace('Aion2FunDps.UI.ViewModels')" inherit="false">
+            <protection id="rename" action="remove" />
+        </rule>
+    </module>
+
+    <module path="bin\Release\net10.0-windows\Aion2FunDps.App.dll">
+        <rule pattern="true" preset="aggressive" inherit="false">
+            <protection id="anti debug" />
+            <protection id="anti tamper" />
+            <protection id="constants" />
+            <protection id="ctrl flow" />
+        </rule>
+        <!-- AppSettings is JSON-serialized; renaming property names invalidates
+             every user's existing settings.json. -->
+        <rule pattern="match-name('AppSettings')" inherit="false">
+            <protection id="rename" action="remove" />
+        </rule>
+        <!-- WPF window classes are referenced from generated XAML
+             InitializeComponent; renaming breaks the partial class link. -->
+        <rule pattern="inherits('System.Windows.Window')" inherit="false">
+            <protection id="rename" action="remove" />
+        </rule>
+        <!-- App.Instance and SnapshotAndSaveSettings are called from MainWindow
+             via reflection-by-name; preserve. -->
+        <rule pattern="match-name('App')" inherit="false">
+            <protection id="rename" action="remove" />
+        </rule>
+    </module>
+
+</project>

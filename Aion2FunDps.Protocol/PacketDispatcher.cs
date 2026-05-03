@@ -320,9 +320,12 @@ public sealed class PacketDispatcher
                          | (compressedSection[2] << 16)
                          | (compressedSection[3] << 24);
 
-        var compressed = compressedSection[4..].ToArray();
-
-        _lz4.TryDecompress(compressed, originLength, decompressed =>
+        // No .ToArray() — Lz4Decompressor.TryDecompress takes a ReadOnlySpan
+        // directly, so the compressed payload is read straight from the
+        // capture buffer with zero allocation. Compressed packets fire at
+        // every game tick during combat; the prior copy was the largest
+        // remaining per-packet alloc on the hot path.
+        _lz4.TryDecompress(compressedSection[4..], originLength, decompressed =>
         {
             var span = decompressed.Span;
             int offset = 0;
@@ -607,8 +610,14 @@ public sealed class PacketDispatcher
 
             LogPartyRoomList(copy0197, rooms, null);
             // Self not in this packet → it's a lobby-browser preview of OTHER
-            // rooms. Don't pollute our party state. Still falls through to the
-            // unknown sniffer for diagnostic logging.
+            // rooms. Don't pollute our party state — and explicitly RETURN so
+            // the packet doesn't fall through to PartyMemberStatusHandler
+            // (which doesn't exclude op0=0x01 from its 0x__ 0x97 catch-all)
+            // and parse a random byte slice as a status-ping member, polluting
+            // NicknameRegistry with garbage entityId↔nickname pairs (audit
+            // 2026-05-04: B1 critical).
+            Interlocked.Increment(ref _knownCount);
+            return;
         }
 
         // 0x40 0x36 = SUMMON_SPAWN
@@ -621,7 +630,7 @@ public sealed class PacketDispatcher
             {
                 try
                 {
-                    var hex = string.Join(" ", body[..Math.Min(128, body.Length)].ToArray().Select(b => b.ToString("x2")));
+                    var hex = string.Join(" ", body.ToArray().Select(b => b.ToString("x2")));
                     bool ok = SummonSpawnHandler.TryParse(body, ticks, sourceIpv4, out var probe);
                     string parsed = ok ? $"summon={probe.SummonId} owner={probe.OwnerId} mobCode={probe.MobCode}" : "PARSE_FAIL";
                     lock (_logLock)
@@ -705,11 +714,57 @@ public sealed class PacketDispatcher
         // a room.
         if (op0 == 0x1d && op1 == 0x97)
         {
-            // Clear the cached "current lobby room" hint too — without this,
-            // the next op=0197 lobby-preview Weak would still match the
-            // just-left room via bestRoomIdBlock and re-emit its members,
-            // causing the aggregator to re-add them right after PartyLeft
-            // wiped them. Wire-confirmed 2026-05-03 00:55:48.
+            // Diagnostic dump of every 1d97 packet so we can disambiguate the
+            // sub-opcodes after the fact (empty = dissolution candidate,
+            // non-empty = real exit). Logged regardless of branch taken below.
+            string subtag;
+            // A2Viewer's IsEmptyControlPacket (PartyStreamParser.cs:1378):
+            //   packet[dataOffset] == 0 && packet[dataOffset+1] == 0
+            //   && packet.Length <= dataOffset + 2
+            // dataOffset = right after the 2-byte opcode, so for our `body`
+            // (which includes the opcode at [0..1]) the check is body.Length<=4
+            // with body[2]==0, body[3]==0.
+            //
+            // 사용자 보고 2026-05-03 17:53:42: 방 비공개 토글 / 제목 변경 / 입장
+            // 거절 같은 host-side 룸 관리 액션에서 1d97이 발화. 이전엔 모든
+            // 1d97을 즉시 PartyLeft로 처리해서 lobby-단계에서 미터가 wipe됨.
+            // 이제 빈 패킷은 "해산 후보"로만 보고 fire 안 함.
+            bool isEmptyControl = body.Length >= 4
+                                  && body.Length <= 4
+                                  && body[2] == 0
+                                  && body[3] == 0;
+            subtag = isEmptyControl ? "EMPTY_CANDIDATE" : "EXIT";
+
+            if (PartyAssemblyLogPath != null)
+            {
+                try
+                {
+                    var hex = string.Join(" ", body.ToArray().Select(b => b.ToString("x2")));
+                    lock (_logLock)
+                    {
+                        System.IO.File.AppendAllText(PartyAssemblyLogPath,
+                            $"{DateTime.Now:HH:mm:ss.fff} op=1d97 {subtag} len={body.Length}: {hex}\n");
+                    }
+                }
+                catch { }
+            }
+
+            if (isEmptyControl)
+            {
+                // Don't fire PartyLeft. A2Viewer treats this as a "dissolution
+                // candidate" that's only confirmed by a follow-up empty 0197.
+                // We don't yet implement the pending/confirmation state machine
+                // — but at minimum we must NOT wipe membership on the first
+                // empty 1d97, since common host-side actions (방 비공개 토글,
+                // 제목 변경, 입장 거절) emit it spuriously.
+                Interlocked.Increment(ref _knownCount);
+                return;
+            }
+
+            // Non-empty 1d97 = explicit "you left the room" per A2Viewer's
+            // [party] 1D 97 퇴장 branch. Fire PartyLeft and clear the cached
+            // lobby room id so subsequent 0197 lobby-preview can't re-attach
+            // the just-left room's members.
             _currentLobbyRoomId = 0;
             emit(new PartyLeft(ticks, sourceIpv4));
             Interlocked.Increment(ref _knownCount);

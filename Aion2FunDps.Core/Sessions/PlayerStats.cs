@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Aion2FunDps.Core.Models;
 
 namespace Aion2FunDps.Core.Sessions;
@@ -14,16 +15,21 @@ public sealed class PlayerStats
     public long LastHitTicks { get; private set; }
     private DateTime? _firstHitAt;                    // wall-clock anchor, used for rolling DPS denominator
     private double? _frozenDps;                       // when set, Dps returns this verbatim (e.g. after boss kill)
-    private readonly Dictionary<int, TargetDpsState> _targetDps = new();
-    private readonly Dictionary<int, double> _frozenTargetDps = new();
+    // ConcurrentDictionary so the UI thread can enumerate Skills / DamagePerTarget /
+    // GetDpsToTarget AFTER OurCrew releases _stateLock — reads of those collections
+    // can otherwise race a concurrent Apply() write and corrupt the bucket array.
+    // The plain Dictionary that was here previously crashed Refresh under sustained
+    // boss combat (audit 2026-05-04: HIGH severity).
+    private readonly ConcurrentDictionary<int, TargetDpsState> _targetDps = new();
+    private readonly ConcurrentDictionary<int, double> _frozenTargetDps = new();
 
-    private readonly Dictionary<uint, SkillStats> _skills = new();
+    private readonly ConcurrentDictionary<uint, SkillStats> _skills = new();
     public IReadOnlyDictionary<uint, SkillStats> Skills => _skills;
 
     private readonly HashSet<int> _targets = new();
     public IReadOnlySet<int> Targets => _targets;
 
-    private readonly Dictionary<int, long> _damagePerTarget = new();
+    private readonly ConcurrentDictionary<int, long> _damagePerTarget = new();
     public IReadOnlyDictionary<int, long> DamagePerTarget => _damagePerTarget;
 
     public PlayerStats(int actorId) { ActorId = actorId; }
@@ -67,6 +73,63 @@ public sealed class PlayerStats
             _skills[evt.SkillCode] = s;
         }
         s.Apply(evt);
+    }
+
+    /// <summary>
+    /// Folds another PlayerStats's accumulated state into this one. Called when
+    /// canonical-id resolution discovers that an existing orphan row (created
+    /// by cold-start damage events before the actor's nickname arrived) is
+    /// actually the same player as the row keyed under the canonical id —
+    /// merging preserves the early-fight damage that was previously DELETED
+    /// by Current.Remove(orphan) (audit 2026-05-04: B2 high — tank/opener
+    /// burst silently lost on cold-start).
+    ///
+    /// Hit counters / per-target damage / per-skill aggregates accumulate.
+    /// FirstHitTicks (and _firstHitAt) take the EARLIEST so DPS denominator
+    /// covers the full fight; LastHitTicks takes the LATEST. _targetDps state
+    /// merges per-target taking earliest FirstHitAt.
+    /// </summary>
+    public void MergeFrom(PlayerStats other)
+    {
+        if (other == null || ReferenceEquals(other, this)) return;
+
+        TotalDamage    += other.TotalDamage;
+        HitCount       += other.HitCount;
+        CritCount      += other.CritCount;
+        BackAttackCount+= other.BackAttackCount;
+        DotHitCount    += other.DotHitCount;
+
+        if (other.FirstHitTicks != 0
+            && (FirstHitTicks == 0 || other.FirstHitTicks < FirstHitTicks))
+        {
+            FirstHitTicks = other.FirstHitTicks;
+            _firstHitAt = other._firstHitAt ?? _firstHitAt;
+        }
+        if (other.LastHitTicks > LastHitTicks) LastHitTicks = other.LastHitTicks;
+
+        foreach (var t in other._targets) _targets.Add(t);
+        foreach (var (id, dmg) in other._damagePerTarget)
+            _damagePerTarget.AddOrUpdate(id, dmg, (_, existing) => existing + dmg);
+
+        foreach (var (id, otherState) in other._targetDps)
+        {
+            _targetDps.AddOrUpdate(id, otherState,
+                (_, existing) =>
+                {
+                    if (otherState.FirstHitAt < existing.FirstHitAt)
+                        existing.FirstHitAt = otherState.FirstHitAt;
+                    if (otherState.LastHitAt > existing.LastHitAt)
+                        existing.LastHitAt = otherState.LastHitAt;
+                    return existing;
+                });
+        }
+
+        foreach (var (skillCode, otherSkill) in other._skills)
+        {
+            _skills.AddOrUpdate(skillCode,
+                otherSkill,
+                (_, existing) => { existing.MergeFrom(otherSkill); return existing; });
+        }
     }
 
     /// <summary>
@@ -171,7 +234,10 @@ public sealed class PlayerStats
 
     private sealed class TargetDpsState(DateTime firstHitAt)
     {
-        public DateTime FirstHitAt { get; } = firstHitAt;
+        // FirstHitAt is settable internally so MergeFrom can pull the earlier
+        // start time from the orphan being folded in. External code (Apply,
+        // GetDpsToTarget, FreezeDpsToTarget) doesn't write it.
+        public DateTime FirstHitAt { get; set; } = firstHitAt;
         public DateTime LastHitAt { get; set; } = firstHitAt;
     }
 }

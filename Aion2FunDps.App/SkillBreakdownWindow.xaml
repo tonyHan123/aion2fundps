@@ -1,0 +1,178 @@
+<Window x:Class="Aion2FunDps.App.SkillBreakdownWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="스킬 상세"
+        Width="560" Height="520"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False">
+
+    <Border Background="{DynamicResource BgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title bar -->
+            <Border Grid.Row="0" Padding="14,9"
+                    Background="{DynamicResource TitleBarBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <DockPanel>
+                    <TextBlock Text="스킬 상세"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontWeight="SemiBold"
+                               FontSize="13"
+                               Foreground="{DynamicResource TextBrush}"
+                               VerticalAlignment="Center"/>
+                    <Button DockPanel.Dock="Right"
+                            Content="✕" Click="CloseBtn_Click"
+                            Width="26" Height="22"
+                            Background="Transparent"
+                            Foreground="{DynamicResource TextBrush}"
+                            BorderThickness="0"
+                            FontSize="13"
+                            HorizontalAlignment="Right"/>
+                </DockPanel>
+            </Border>
+
+            <!-- Player summary -->
+            <Border Grid.Row="1" Padding="14,10"
+                    Background="{DynamicResource SectionOverlayBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal">
+                    <Image x:Name="ClassIconImg" Width="28" Height="28" Margin="0,0,10,0"
+                           VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="Fant"/>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock x:Name="PlayerNameText"
+                                   FontFamily="{DynamicResource UiFont}"
+                                   FontWeight="SemiBold"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource TextBrush}"/>
+                        <TextBlock x:Name="PlayerSummaryText"
+                                   FontFamily="{DynamicResource MonoFont}"
+                                   FontSize="11"
+                                   Margin="0,2,0,0"
+                                   Foreground="{DynamicResource MutedBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Column headers -->
+            <Border Grid.Row="2" Padding="14,6"
+                    Background="{DynamicResource FooterOverlayBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,0,0,1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="32"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="50"/>
+                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition Width="100"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="1" Text="스킬"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="11"
+                               Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock Grid.Column="2" Text="HIT"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="11"
+                               TextAlignment="Right"
+                               Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock Grid.Column="3" Text="CRI"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="11"
+                               TextAlignment="Right"
+                               Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock Grid.Column="4" Text="총 피해량"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="11"
+                               TextAlignment="Right"
+                               Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock Grid.Column="5" Text="비율"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="11"
+                               TextAlignment="Right"
+                               Foreground="{DynamicResource MutedBrush}"/>
+                </Grid>
+            </Border>
+
+            <!-- Skill rows -->
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="6,4">
+                <ItemsControl x:Name="SkillList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Height="30" Margin="0,1">
+                                <Border CornerRadius="3"
+                                        Background="{DynamicResource RowOverlayBrush}"/>
+                                <!-- Damage bar (per-skill share) -->
+                                <Border Background="{DynamicResource DamageBarBrush}"
+                                        CornerRadius="3"
+                                        HorizontalAlignment="Left"
+                                        Width="{Binding BarWidth}"/>
+                                <Grid Margin="8,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="32"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="50"/>
+                                        <ColumnDefinition Width="60"/>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="60"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Image Grid.Column="0"
+                                           Width="22" Height="22"
+                                           VerticalAlignment="Center"
+                                           Source="{Binding Icon}"
+                                           RenderOptions.BitmapScalingMode="Fant"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                               Foreground="{DynamicResource TextBrush}"
+                                               FontFamily="{DynamicResource UiFont}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Hits}"
+                                               Foreground="{DynamicResource TextBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
+                                               FontSize="11"
+                                               TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding CritRateDisplay}"
+                                               Foreground="{DynamicResource CyanBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
+                                               FontSize="11"
+                                               TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="4" Text="{Binding TotalDamage, StringFormat=N0}"
+                                               Foreground="{DynamicResource TextBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="5" Text="{Binding ShareDisplay}"
+                                               Foreground="{DynamicResource MutedBrush}"
+                                               FontFamily="{DynamicResource MonoFont}"
+                                               FontSize="11"
+                                               TextAlignment="Right"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</Window>

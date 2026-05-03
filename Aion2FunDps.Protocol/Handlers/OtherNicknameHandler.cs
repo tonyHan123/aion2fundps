@@ -67,8 +67,15 @@ public static class OtherNicknameHandler
         int job = body[offset];
         offset += 1;
 
-        // Brute-force search for valid server (1001-1021 or 2001-2021)
-        int server = -1;
+        // Brute-force search for valid server (1001-1021 or 2001-2021).
+        // Default 0 (= "not found"), NOT -1: NicknameRegistry's Register
+        // uses `if (info.Server == 0) server = prev.Server` to keep an
+        // earlier registered server when this packet didn't carry one. With
+        // -1 the fallback didn't apply, so a Strong-roster-set server
+        // (1021 etc.) was overwritten to -1 by a later OTHER_NICK that
+        // couldn't find the server byte. Result: meter dropped the
+        // [server] suffix mid-dungeon (사용자 보고 2026-05-04 무의 요람).
+        int server = 0;
         int serverBase = offset;
         for (int i = 0; i < 32; i++) // bound the search
         {

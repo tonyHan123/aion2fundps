@@ -18,6 +18,9 @@ public partial class App : Application
     // first deploy: "session start" line was the only entry in capture-health.log).
     private System.Threading.Timer? _healthHeartbeatTimer;
     private ForegroundWatcher? _foregroundWatcher;
+    private MainWindow? _mainWindow;
+    public AppSettings Settings { get; private set; } = new();
+    public static App Instance => (App)Current;
     private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "startup.log");
 
     static App()
@@ -34,24 +37,44 @@ public partial class App : Application
     {
         Log("OnStartup begin");
 
+        // Load persisted settings BEFORE anything that depends on them
+        // (theme, window position, opacity, AutoResetOnBoss). Defaults are
+        // safe so a missing/corrupt file doesn't block startup.
+        Settings = AppSettings.Load();
+        Log($"Settings loaded: theme={Settings.SelectedTheme} opacity={Settings.WindowOpacity:F2}");
+
+        // Apply the stored theme. ApplyTheme silently falls back to Default
+        // if the theme dictionary is missing (e.g., user picked a theme that
+        // was removed in a later release).
+        ThemeManager.ApplyTheme(Settings.SelectedTheme);
+
         // Self-cleanup: kill any prior aion2fundps instance left behind by an
         // old build whose Close-handler wasn't wired up. Only matches our exact
         // window title so the dotnet build server / VS Code language server
         // (also dotnet.exe) are untouched.
-        try
+        //
+        // Per-process try/catch + Dispose so a single dead/zombie process
+        // doesn't abort the loop early, leaving the rest of the candidates
+        // un-killed. Process objects are IDisposable (hold a kernel handle).
+        int myPid = System.Diagnostics.Process.GetCurrentProcess().Id;
+        foreach (var p in System.Diagnostics.Process.GetProcessesByName("dotnet"))
         {
-            int myPid = System.Diagnostics.Process.GetCurrentProcess().Id;
-            foreach (var p in System.Diagnostics.Process.GetProcessesByName("dotnet"))
+            try
             {
                 if (p.Id == myPid) continue;
+                // MainWindowTitle access throws InvalidOperationException for
+                // processes that exited between enumeration and access; the
+                // outer-loop try/catch (the previous version) bailed out on
+                // the first such race, leaving real zombies alive.
                 if (p.MainWindowTitle == "aion2fundps")
                 {
                     Log($"  killing prior meter instance pid={p.Id}");
                     p.Kill();
                 }
             }
+            catch (Exception ex) { Log($"  skip pid={p.Id}: {ex.Message}"); }
+            finally { p.Dispose(); }
         }
-        catch (Exception ex) { Log($"prior-instance cleanup failed (non-fatal): {ex.Message}"); }
 
         AppDomain.CurrentDomain.UnhandledException += (_, ea) =>
         {
@@ -81,49 +104,104 @@ public partial class App : Application
             var dungeonDb = JsonDataLoader.LoadDungeonDatabase();
             Log($"  dungeons: {dungeonDb.Count}");
 
+            // Pre-flight Npcap check. SharpPcap's failure mode without Npcap
+            // is a low-level FileNotFoundException deep inside libpcap init —
+            // surface a clean dialog before that happens. Free Npcap's
+            // license forbids redistribution / silent install, so we point
+            // the user to npcap.com and let them install via Npcap's own UI.
+            if (!NpcapDetector.IsInstalled())
+            {
+                Log("Npcap missing — showing install prompt");
+                var dlg = new NpcapMissingWindow();
+                dlg.ShowDialog();
+                // Whether the user clicked "Open download page" or "Quit",
+                // we exit. They restart the meter after installing Npcap.
+                Shutdown(0);
+                return;
+            }
+
             Log("Init NpcapAdapter");
             _capture = new NpcapAdapter(new CaptureOptions())
             {
+#if DEBUG
                 UdpDumpPath = Path.Combine(AppContext.BaseDirectory, "udp-dump.log"),
+#endif
             };
             Log($"  selected: {_capture.SelectedInterface}");
 
             var reorderer = new SequenceReorderer();
             var assembler = new FrameAssembler();
+
+            // Per-packet diagnostic paths are gated to Debug builds. The handlers
+            // and dispatcher still check `if (Path != null)` per call, so leaving
+            // the property null in Release short-circuits the file I/O AND the
+            // hex-dump string allocations that precede each write — the dominant
+            // cost on the capture hot path. Release builds get zero diagnostic
+            // I/O; user-facing logs (boss-kills, session-summary) and small
+            // periodic logs (capture-health, startup) stay on.
+            var dispatcher = new PacketDispatcher();
+#if DEBUG
+            // Session header for user-marks.log so log lines from one session
+            // are visually separated from the next when grepping after a bug
+            // report. Other debug logs grow in-place per session — without a
+            // boundary marker the user can't tell which MARK # belongs to
+            // which run.
+            try
+            {
+                File.AppendAllText(
+                    Path.Combine(AppContext.BaseDirectory, "user-marks.log"),
+                    $"=== {DateTime.Now:yyyy-MM-dd HH:mm:ss} session start ===\n");
+            }
+            catch { }
+
             var profileDebugLogPath = Path.Combine(AppContext.BaseDirectory, "profile-debug.log");
             try
             {
                 File.AppendAllText(profileDebugLogPath, $"=== {DateTime.Now:HH:mm:ss.fff} profile logger armed\n");
             }
             catch { }
-
-            var dispatcher = new PacketDispatcher
-            {
-                DiagnosticLogPath = Path.Combine(AppContext.BaseDirectory, "nick-debug.log"),
-                UnknownSnifferLogPath = Path.Combine(AppContext.BaseDirectory, "mobspawn-debug.log"),
-                EncounterAnnounceLogPath = Path.Combine(AppContext.BaseDirectory, "encounter-debug.log"),
-                ProfileDebugLogPath = profileDebugLogPath,
-                SummonSpawnLogPath = Path.Combine(AppContext.BaseDirectory, "summon-spawn-debug.log"),
-                PartyAssemblyLogPath = Path.Combine(AppContext.BaseDirectory, "party-assembly-debug.log"),
-                LiveStatusLogPath = Path.Combine(AppContext.BaseDirectory, "livestatus-debug.log"),
-                BulkInfoLogPath = Path.Combine(AppContext.BaseDirectory, "bulk-debug.log"),
-                PartyFamilyLogPath = Path.Combine(AppContext.BaseDirectory, "party-family-debug.log"),
-            };
+            dispatcher.DiagnosticLogPath = Path.Combine(AppContext.BaseDirectory, "nick-debug.log");
+            dispatcher.UnknownSnifferLogPath = Path.Combine(AppContext.BaseDirectory, "mobspawn-debug.log");
+            dispatcher.EncounterAnnounceLogPath = Path.Combine(AppContext.BaseDirectory, "encounter-debug.log");
+            dispatcher.ProfileDebugLogPath = profileDebugLogPath;
+            dispatcher.SummonSpawnLogPath = Path.Combine(AppContext.BaseDirectory, "summon-spawn-debug.log");
+            dispatcher.PartyAssemblyLogPath = Path.Combine(AppContext.BaseDirectory, "party-assembly-debug.log");
+            dispatcher.LiveStatusLogPath = Path.Combine(AppContext.BaseDirectory, "livestatus-debug.log");
+            dispatcher.BulkInfoLogPath = Path.Combine(AppContext.BaseDirectory, "bulk-debug.log");
+            dispatcher.PartyFamilyLogPath = Path.Combine(AppContext.BaseDirectory, "party-family-debug.log");
+#endif
             var aggregator = new DpsAggregator
             {
                 DungeonDb = dungeonDb,
             };
+#if DEBUG
             aggregator.Boss.DiagnosticLogPath = Path.Combine(AppContext.BaseDirectory, "reset-debug.log");
             aggregator.RosterDebugLogPath = Path.Combine(AppContext.BaseDirectory, "roster-debug.log");
+#endif
 
-            // Wire mob_code → boss-status predicate. Authoritative for known mobs;
-            // BossTracker falls back to HP threshold when entity wasn't seen via SUMMON_SPAWN.
+            // Wire mob_code → boss-status predicate. Three-state result:
+            //   true  → known boss (mobs.json IsBoss=true)
+            //   false → known mob, not a boss / known player nickname (PvP gate)
+            //   null  → unknown entity, BossTracker may fall back to HP threshold
+            //
+            // The PvP gate (returning false instead of null when the entity is a
+            // registered player) prevents 20M-HP characters in town from tripping
+            // the HP-fallback boss detection in BossTracker.TryFireBossDetected,
+            // which used to reset the leaderboard mid-PvP duel (audit 2026-05-04:
+            // B4 high — BossTracker had no registry handle so we filter here).
             aggregator.Boss.IsKnownBoss = entityId =>
             {
                 int? mc = aggregator.Entities.GetMobCode(entityId);
-                if (!mc.HasValue) return null;
-                var info = mobDb.GetByCode(mc.Value);
-                return info?.IsBoss;
+                if (mc.HasValue)
+                {
+                    var info = mobDb.GetByCode(mc.Value);
+                    return info?.IsBoss;
+                }
+                // No mob_code, but if this entityId is a known player nickname
+                // it's a PvP target — explicitly NOT a boss.
+                if (aggregator.Registry.GetEntry(entityId) != null)
+                    return false;
+                return null;
             };
 
             _cts = new CancellationTokenSource();
@@ -178,9 +256,35 @@ public partial class App : Application
 
             Log("Creating MainWindow");
             var window = new MainWindow { DataContext = vm };
+            _mainWindow = window;
+
+            // Restore persisted window position / size if present. Validate
+            // against current screen bounds so a stale offscreen position
+            // (e.g., user disconnected an external monitor since last save)
+            // can't put the meter beyond the visible work area.
+            if (Settings.WindowLeft is double l && Settings.WindowTop is double t
+                && l >= SystemParameters.VirtualScreenLeft
+                && t >= SystemParameters.VirtualScreenTop
+                && l <= SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100
+                && t <= SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
+            {
+                window.Left = l;
+                window.Top = t;
+            }
+            if (Settings.WindowWidth is double w && w >= 200) window.Width = w;
+            if (Settings.WindowHeight is double h && h >= 100) window.Height = h;
+
+            // Restore persisted preferences onto the view-model.
+            vm.WindowOpacity = Settings.WindowOpacity;
+            vm.AutoResetOnBoss = Settings.AutoResetOnBoss;
+            vm.IsCompact = Settings.IsCompact;
 
             Log("Showing window");
             window.Show();
+
+            // Hotkeys are bound after Show() so the window has a valid
+            // DataContext + handle for InputBinding registration.
+            window.ApplyHotkeys();
 
             // Game-overlay behaviour: meter is only visible while the Aion 2
             // client is the foreground window. Alt-Tab to a browser, Discord,
@@ -207,9 +311,58 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Snapshots the current UI state (window geometry, theme, opacity,
+    /// compact flag, auto-reset toggle) into Settings and persists to disk.
+    /// Idempotent and safe to call multiple times. Must be invoked manually
+    /// from MainWindow's Closing / CloseBtn paths because those use
+    /// Environment.Exit to deterministically tear down the SharpPcap
+    /// native callback thread, which bypasses App.OnExit. Wire-confirmed
+    /// 2026-05-03: prior to this method, settings save was code-present
+    /// but never actually executed at runtime — every close went through
+    /// Environment.Exit and skipped OnExit entirely.
+    /// </summary>
+    public void SnapshotAndSaveSettings()
+    {
+        try
+        {
+            if (_mainWindow != null && _mainWindow.WindowState == WindowState.Normal)
+            {
+                Settings.WindowLeft   = _mainWindow.Left;
+                Settings.WindowTop    = _mainWindow.Top;
+                Settings.WindowWidth  = _mainWindow.Width;
+                Settings.WindowHeight = _mainWindow.Height;
+            }
+            if (_mainWindow?.DataContext is MainViewModel vm)
+            {
+                Settings.WindowOpacity   = vm.WindowOpacity;
+                Settings.AutoResetOnBoss = vm.AutoResetOnBoss;
+                Settings.IsCompact       = vm.IsCompact;
+            }
+            Settings.SelectedTheme = ThemeManager.CurrentThemeId;
+            Settings.Save();
+            Log($"Settings saved: theme={Settings.SelectedTheme}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Settings save failed (non-fatal): {ex.Message}");
+        }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         Log("OnExit");
+        // OnExit is the "graceful WPF shutdown" path. In practice we usually
+        // exit via Environment.Exit (see MainWindow), so this only runs for
+        // edge-case shutdowns (e.g., Application.Shutdown called explicitly).
+        // Save anyway in case we get here.
+        SnapshotAndSaveSettings();
+
+        // Dispose the heartbeat timer first so its callback can't fire
+        // against an already-disposed _capture (would be a TOCTOU on
+        // _capture.Health). Without this, the 30-second tick after Dispose
+        // races with capture-health.log writes from the DropDetected handler.
+        _healthHeartbeatTimer?.Dispose();
         _foregroundWatcher?.Stop();
         _cts?.Cancel();
         _capture?.Dispose();

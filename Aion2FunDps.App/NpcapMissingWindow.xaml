@@ -1,0 +1,101 @@
+<Window x:Class="Aion2FunDps.App.NpcapMissingWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Npcap 필요"
+        Width="460" Height="300"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True">
+
+    <Border Background="{DynamicResource BgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title bar (drag) -->
+            <Border Grid.Row="0" Padding="14,9"
+                    Background="{DynamicResource TitleBarBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <TextBlock Text="패킷 캡처 드라이버 필요"
+                           FontFamily="{DynamicResource UiFont}"
+                           FontWeight="SemiBold"
+                           FontSize="13"
+                           Foreground="{DynamicResource TextBrush}"
+                           VerticalAlignment="Center"/>
+            </Border>
+
+            <!-- Body -->
+            <StackPanel Grid.Row="1" Margin="22,18,22,0">
+                <TextBlock FontFamily="{DynamicResource UiFont}"
+                           FontWeight="SemiBold"
+                           FontSize="14"
+                           Foreground="{DynamicResource TextBrush}"
+                           Text="Npcap 이 설치되어 있지 않습니다"
+                           Margin="0,0,0,10"/>
+
+                <TextBlock FontFamily="{DynamicResource UiFont}"
+                           FontSize="12"
+                           Foreground="{DynamicResource MutedBrush}"
+                           TextWrapping="Wrap"
+                           LineHeight="20"
+                           Text="이 미터는 Aion 2 의 네트워크 트래픽을 분석합니다. 그러기 위해 Nmap 프로젝트의 무료 패킷 캡처 드라이버 Npcap 이 필요합니다."
+                           Margin="0,0,0,12"/>
+
+                <TextBlock FontFamily="{DynamicResource UiFont}"
+                           FontSize="12"
+                           Foreground="{DynamicResource MutedBrush}"
+                           TextWrapping="Wrap"
+                           LineHeight="20"
+                           Margin="0,0,0,12">
+                    <Run Text="아래 버튼을 누르면 Npcap 공식 다운로드 페이지가 열립니다."/>
+                    <LineBreak/>
+                    <Run Text="설치 시 "/>
+                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AmberBrush}"
+                         Text="'Install Npcap in WinPcap API-compatible Mode'"/>
+                    <Run Text=" 옵션을 반드시 체크해주세요."/>
+                </TextBlock>
+            </StackPanel>
+
+            <!-- Buttons -->
+            <Border Grid.Row="2" Padding="22,12"
+                    Background="{DynamicResource FooterOverlayBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,1,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="OpenSiteBtn" Click="OpenSite_Click"
+                            Content="Npcap 다운로드 페이지 열기"
+                            Padding="14,7"
+                            Background="{DynamicResource CyanBrush}"
+                            Foreground="White"
+                            FontFamily="{DynamicResource UiFont}"
+                            FontWeight="SemiBold"
+                            FontSize="12"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Margin="0,0,8,0"/>
+                    <Button x:Name="QuitBtn" Click="Quit_Click"
+                            Content="종료"
+                            Padding="14,7"
+                            Background="Transparent"
+                            Foreground="{DynamicResource MutedBrush}"
+                            FontFamily="{DynamicResource UiFont}"
+                            FontSize="12"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1"
+                            Cursor="Hand"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

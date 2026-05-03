@@ -1,0 +1,124 @@
+<Window x:Class="Aion2FunDps.App.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="정보"
+        Width="420" Height="380"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+
+    <Border Background="{DynamicResource BgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title bar -->
+            <Border Grid.Row="0" Padding="14,9"
+                    Background="{DynamicResource TitleBarBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,0,0,1"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <DockPanel>
+                    <TextBlock Text="정보"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontWeight="SemiBold"
+                               FontSize="13"
+                               Foreground="{DynamicResource TextBrush}"
+                               VerticalAlignment="Center"/>
+                    <Button DockPanel.Dock="Right"
+                            Content="✕" Click="CloseBtn_Click"
+                            Width="26" Height="22"
+                            Background="Transparent"
+                            Foreground="{DynamicResource TextBrush}"
+                            BorderThickness="0"
+                            FontSize="13"
+                            HorizontalAlignment="Right"/>
+                </DockPanel>
+            </Border>
+
+            <!-- Body -->
+            <StackPanel Grid.Row="1" Margin="22,18,22,0">
+                <!-- Wordmark -->
+                <TextBlock Text="AION2FUN"
+                           FontFamily="Impact, Arial Black, sans-serif"
+                           FontSize="34"
+                           FontWeight="Bold"
+                           Foreground="{DynamicResource LogoMainBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,4,0,2"/>
+
+                <TextBlock x:Name="VersionText"
+                           FontFamily="{DynamicResource MonoFont}"
+                           FontSize="11"
+                           Foreground="{DynamicResource MutedBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,18"/>
+
+                <Border Background="{DynamicResource SectionOverlayBrush}"
+                        CornerRadius="4"
+                        Padding="14,10"
+                        Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock FontFamily="{DynamicResource UiFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   Text="라이선스"/>
+                        <TextBlock FontFamily="{DynamicResource UiFont}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   Margin="0,2,0,0">
+                            <Run Text="MIT License — © 2026 tonyHan123"/>
+                        </TextBlock>
+                        <TextBlock FontFamily="{DynamicResource UiFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   TextWrapping="Wrap"
+                                   LineHeight="18"
+                                   Margin="0,8,0,0"
+                                   Text="자유롭게 사용 / 수정 / 재배포 가능. 사용으로 인한 책임은 사용자 본인에게 있습니다."/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{DynamicResource SectionOverlayBrush}"
+                        CornerRadius="4"
+                        Padding="14,10">
+                    <StackPanel>
+                        <TextBlock FontFamily="{DynamicResource UiFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource MutedBrush}"
+                                   Text="저장소"/>
+                        <TextBlock FontFamily="{DynamicResource MonoFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource CyanBrush}"
+                                   Cursor="Hand"
+                                   MouseLeftButtonUp="GitHub_Click"
+                                   Margin="0,3,0,0"
+                                   Text="github.com/tonyHan123/aion2fundps"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Footer -->
+            <Border Grid.Row="2" Padding="22,12"
+                    Background="{DynamicResource FooterOverlayBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="0,1,0,0">
+                <TextBlock FontFamily="{DynamicResource UiFont}"
+                           FontSize="10"
+                           Foreground="{DynamicResource MutedBrush}"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center"
+                           Text="이 프로그램은 NCSoft / 아이온2 운영사와 무관합니다."/>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

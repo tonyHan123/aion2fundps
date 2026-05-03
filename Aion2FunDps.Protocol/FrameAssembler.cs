@@ -94,14 +94,23 @@ public sealed class FrameAssembler
         for (int i = 0; i < span.Length && i < 5; i++)
         {
             byte b = span[i];
+            // Reject 5-byte varints whose top byte's low 4 bits would shift
+            // into the sign bit — protocol doesn't use values > Int32.MaxValue,
+            // so a positive overflow indicates a corrupt prefix. Without this
+            // guard a malformed prefix yields a negative `value` that
+            // downstream length math treats as "huge", leading to silent
+            // drops or wrong attribution (audit 2026-05-04: B7 medium).
+            if (i == 4 && (b & 0xF0) != 0) return false;
             value |= (b & 0x7F) << shift;
             if ((b & 0x80) == 0)
             {
+                if (value < 0) return false;
                 bytesRead = i + 1;
                 return true;
             }
             shift += 7;
         }
+        // Reached the 5-byte cap without finding a terminator → malformed.
         return false;
     }
 

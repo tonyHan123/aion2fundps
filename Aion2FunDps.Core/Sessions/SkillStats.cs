@@ -20,4 +20,17 @@ public sealed class SkillStats
         HitCount++;
         if (evt.IsCritical) CritCount++;
     }
+
+    /// <summary>
+    /// Folds another SkillStats's accumulated counts into this one. Used by
+    /// PlayerStats.MergeFrom when an orphan stats row gets folded into its
+    /// canonical row after late nickname registration.
+    /// </summary>
+    internal void MergeFrom(SkillStats other)
+    {
+        if (other == null || ReferenceEquals(other, this)) return;
+        TotalDamage += other.TotalDamage;
+        HitCount    += other.HitCount;
+        CritCount   += other.CritCount;
+    }
 }

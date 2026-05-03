@@ -1,0 +1,100 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ========================================================================
+         Theme: Sweet Pastel
+         ========================================================================
+         Light, feminine, intentionally restrained. Warm cream surfaces are the
+         canvas; pink shows up only at functional accents (DPS values, focus
+         lines, primary metrics) so the design feels "considered" rather than
+         "AI threw pink at everything". Gold lives where it does in Default —
+         on content markers (dungeon name, focused boss) — so the role of each
+         accent stays consistent across themes.
+
+         Contrast: text colors hit WCAG AA against the cream surface. The cream
+         BG runs at 94% alpha so the in-game UI underneath stays slightly
+         visible without leaking through and breaking readability — a higher
+         opacity than the dark theme's 90% because dark text on a translucent
+         light surface has less margin against busy game backgrounds.
+         ======================================================================== -->
+
+    <!-- Surfaces -->
+    <!-- Warm muted taupe-rose. Tuned down again from the previous bright
+         cream (사용자: "너무 밝은데... 편안하게 많이 부드럽게 낮춰줘") —
+         lower luminance, dustier saturation. Reads as "soft beige with a
+         rose hint" rather than "light pink". Alpha 0xEE (93%) softens the
+         contrast against the game underneath; full opacity made the meter
+         feel like a glaring sticker over the scene. -->
+    <SolidColorBrush x:Key="BgBrush"            Color="#EEE8DAD8"/>
+
+    <!-- Title bar / borders: dusty warm-rose overlays at modest alpha. -->
+    <SolidColorBrush x:Key="TitleBarBrush"      Color="#33C8AAB0"/>
+    <SolidColorBrush x:Key="BorderBrush"        Color="#44A88B92"/>
+    <SolidColorBrush x:Key="DividerBrush"       Color="#1A8B7280"/>
+
+    <!-- Typography colors -->
+    <!-- Deep rose-brown for body text — high contrast on the muted beige. -->
+    <SolidColorBrush x:Key="TextBrush"          Color="#3D2D33"/>
+    <SolidColorBrush x:Key="MutedBrush"         Color="#8B7280"/>
+
+    <!-- Content accents -->
+    <!-- Gold: dungeon name, focused boss, medal-style content markers.
+         Pulled toward antique brass to match the muted surface. -->
+    <SolidColorBrush x:Key="GoldBrush"          Color="#A67E4F"/>
+    <SolidColorBrush x:Key="GoldDimBrush"       Color="#7E5D38"/>
+
+    <!-- Pink accent in CyanBrush slot — DPS column / primary callout. Dustier
+         than the previous #D17C9D so it reads as "theme color" without the
+         brightness that made the meter feel candy-toned. -->
+    <SolidColorBrush x:Key="CyanBrush"          Color="#B27290"/>
+
+    <!-- Amber slot: muted rose for the auto-reset banner. -->
+    <SolidColorBrush x:Key="AmberBrush"         Color="#B27D90"/>
+    <SolidColorBrush x:Key="AmberSoftBrush"     Color="#22B27D90"/>
+
+    <!-- Typography — same family across themes. One typography choice owned
+         at the design-system level keeps "this app's voice" consistent
+         regardless of color theme. -->
+    <FontFamily x:Key="UiFont">Pretendard, Malgun Gothic, Segoe UI</FontFamily>
+    <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
+
+    <!-- Row + section surface overlays. Warm dark-alpha against the cream BG
+         (vs the dark theme's white-alpha against deep-navy BG). Same low
+         opacity so the overlay reads as a subtle tint, not a heavy stripe. -->
+    <SolidColorBrush x:Key="RowOverlayBrush"      Color="#08000000"/>
+    <SolidColorBrush x:Key="SectionOverlayBrush"  Color="#0D000000"/>
+    <SolidColorBrush x:Key="FooterOverlayBrush"   Color="#0A000000"/>
+
+    <!-- Per-row signature colors. Self = deep rose accent; primary guess =
+         antique gold. Both pulled from the existing palette so the leaderboard
+         feels cohesive with the dungeon-name / boss-banner gold and the DPS
+         column rose. -->
+    <SolidColorBrush x:Key="SelfAccentBrush"          Color="#B27290"/>
+    <SolidColorBrush x:Key="PrimaryGuessAccentBrush"  Color="#A67E4F"/>
+    <LinearGradientBrush x:Key="SelfRowBgBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#33B27290" Offset="0"/>
+        <GradientStop Color="#14B27290" Offset="0.45"/>
+        <GradientStop Color="#08B27290" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PrimaryGuessRowBgBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#2EA67E4F" Offset="0"/>
+        <GradientStop Color="#12A67E4F" Offset="0.45"/>
+        <GradientStop Color="#06A67E4F" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- Damage bar — dusty rose to match the cream surface. -->
+    <SolidColorBrush x:Key="DamageBarBrush" Color="#55B27290"/>
+
+    <!-- Logo (AION2FUN wordmark) — warm rose family for the cream theme. -->
+    <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0"   Color="#F8F0E8"/>
+        <GradientStop Offset="0.55" Color="#D9B7C2"/>
+        <GradientStop Offset="1"   Color="#A07286"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="LogoAccentBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#C8839E"/>
+        <GradientStop Offset="1" Color="#7A4D5E"/>
+    </LinearGradientBrush>
+    <Color x:Key="LogoGlowColor">#B27290</Color>
+
+</ResourceDictionary>

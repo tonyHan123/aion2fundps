@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 사용 질문 / 잡담
+    url: https://github.com/tonyHan123/aion2fundps/discussions
+    about: 버그/기능 제안 외 일반 질문은 Discussions 게시판으로

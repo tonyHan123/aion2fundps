@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Aion2FunDps.Core.Models;
+using Aion2FunDps.Core.Repositories;
 
 namespace Aion2FunDps.Core;
 
@@ -22,10 +23,21 @@ public sealed class NicknameRegistry
 {
     /// <summary>Canonical entity_id → entry (one per nickname).</summary>
     private readonly ConcurrentDictionary<int, NicknameEntry> _entries = new();
-    /// <summary>Nickname → canonical entity_id.</summary>
-    private readonly Dictionary<string, int> _nicknameToCanonical = new();
-    /// <summary>Any entity_id → canonical entity_id. Includes self-loops for canonicals.</summary>
-    private readonly Dictionary<int, int> _aliases = new();
+    /// <summary>Nickname → canonical entity_id. ConcurrentDictionary so the UI
+    /// thread's <c>GetEntry</c>/<c>GetName</c> reads can race the capture
+    /// thread's writes safely — the prior plain Dictionary corrupted its
+    /// bucket array under sustained party traffic + 500ms UI ticks.</summary>
+    private readonly ConcurrentDictionary<string, int> _nicknameToCanonical = new(StringComparer.Ordinal);
+    /// <summary>Any entity_id → canonical entity_id. Includes self-loops for canonicals.
+    /// ConcurrentDictionary for the same reason as <see cref="_nicknameToCanonical"/>.
+    /// Bounded with FIFO eviction at 10k entries — this is the fastest-growing
+    /// collection in the registry (one entry per unique spawn id observed),
+    /// which over hours of play in busy zones would otherwise hit tens of
+    /// thousands. Active members and self stay alive because the lobby/party
+    /// broadcasts re-register them every few seconds (refreshing their
+    /// position in the FIFO order). Stale aliases from past dungeons are the
+    /// ones that get dropped — they're never queried again.</summary>
+    private readonly BoundedConcurrentDictionary<int, int> _aliases = new(10_000);
 
     /// <summary>Canonical entity_id of the user's own character. Set when
     /// <see cref="Register"/> processes a NicknameInfo with IsSelf=true.</summary>
@@ -85,10 +97,19 @@ public sealed class NicknameRegistry
     public int Register(NicknameInfo info)
     {
         int incoming = info.UserId;
+        // Normalize Korean nicknames to NFC at the entry boundary. Different
+        // packet handlers can deliver the same nickname in NFC vs NFD form
+        // (Hangul composed vs decomposed) — without this normalization, the
+        // string keys in _nicknameToCanonical / _nickGroupIds get duplicated
+        // entries that look identical but hash to different buckets, breaking
+        // multi-room self-inference. Wire-confirmed 2026-05-04: 짭호 in two
+        // separate Strong rosters failed to match in _nickGroupIds, leaving
+        // SelfUserId null even though the nick clearly appeared across rooms.
+        string? nickname = NormalizeNickname(info.Nickname);
         int canonical;
 
-        if (!string.IsNullOrEmpty(info.Nickname)
-            && _nicknameToCanonical.TryGetValue(info.Nickname, out var existing))
+        if (!string.IsNullOrEmpty(nickname)
+            && _nicknameToCanonical.TryGetValue(nickname, out var existing))
         {
             // Same nickname already canonical under a different entity_id —
             // alias the incoming id to it.
@@ -99,8 +120,8 @@ public sealed class NicknameRegistry
             // First sighting of this nickname (or no nickname): incoming id
             // becomes its own canonical.
             canonical = incoming;
-            if (!string.IsNullOrEmpty(info.Nickname))
-                _nicknameToCanonical[info.Nickname] = canonical;
+            if (!string.IsNullOrEmpty(nickname))
+                _nicknameToCanonical[nickname] = canonical;
         }
         _aliases[incoming] = canonical;
 
@@ -117,16 +138,20 @@ public sealed class NicknameRegistry
         if (_entries.TryGetValue(canonical, out var prev))
         {
             if (cp == 0 || cp < prev.CombatPower) cp = prev.CombatPower;
-            if (server == 0) server = prev.Server;
-            if (job == 0) job = prev.Job;
+            // Treat <= 0 as "not present" to defend against handlers that
+            // return -1 instead of 0 for missing fields. Without this, a
+            // later packet with server=-1 overwrites a previously valid
+            // server (1021 etc.), dropping the [server] suffix.
+            if (server <= 0) server = prev.Server;
+            if (job <= 0) job = prev.Job;
             isSelf = isSelf || prev.IsSelf;
         }
-        _entries[canonical] = new NicknameEntry(info.Nickname, isSelf, server, job, cp);
+        _entries[canonical] = new NicknameEntry(nickname ?? string.Empty, isSelf, server, job, cp);
 
         if (isSelf)
         {
             SelfUserId = canonical;
-            if (!string.IsNullOrWhiteSpace(info.Nickname)) SelfNickname = info.Nickname;
+            if (!string.IsNullOrWhiteSpace(nickname)) SelfNickname = nickname;
             // SELF_NICK's "server" field carries a region/account code, not
             // the lobby shard id we need for the suffix. Don't assign
             // SelfServerId from the IsSelf path — fall through to the
@@ -134,7 +159,7 @@ public sealed class NicknameRegistry
             // from op=0297 records.
         }
         else if (SelfNickname is string selfName
-                 && string.Equals(selfName, info.Nickname, StringComparison.Ordinal))
+                 && string.Equals(selfName, nickname, StringComparison.Ordinal))
         {
             // Nickname-inferred self path: when SelfNickname was set via
             // RecordSelfNickCandidates BEFORE this canonical existed,
@@ -148,6 +173,19 @@ public sealed class NicknameRegistry
     }
 
     /// <summary>
+    /// Single normalization point for nicknames entering the registry. Returns
+    /// NFC form (composed Hangul) so all dictionary lookups hit the same key
+    /// regardless of which handler delivered the string.
+    /// </summary>
+    private static string? NormalizeNickname(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return raw;
+        return raw.IsNormalized(System.Text.NormalizationForm.FormC)
+            ? raw
+            : raw.Normalize(System.Text.NormalizationForm.FormC);
+    }
+
+    /// <summary>
     /// Update CombatPower for the canonical entry whose nickname matches.
     /// Used by the standalone op=0x00 0x92 CP broadcast (nickname-keyed, no
     /// entity_id). Returns 1 if patched, 0 otherwise. No-downgrade rule.
@@ -155,7 +193,9 @@ public sealed class NicknameRegistry
     public int UpdateCombatPowerByName(string nickname, int serverId, int combatPower)
     {
         if (string.IsNullOrWhiteSpace(nickname) || combatPower <= 0) return 0;
-        if (!_nicknameToCanonical.TryGetValue(nickname, out var canonical)) return 0;
+        var key = NormalizeNickname(nickname);
+        if (string.IsNullOrEmpty(key)) return 0;
+        if (!_nicknameToCanonical.TryGetValue(key, out var canonical)) return 0;
         if (!_entries.TryGetValue(canonical, out var entry)) return 0;
         if (serverId > 0 && entry.Server > 0 && entry.Server != serverId) return 0;
         if (combatPower <= entry.CombatPower) return 0;
@@ -180,9 +220,15 @@ public sealed class NicknameRegistry
         int weight = soloBoost ? 5 : 1;
         string? winner = null;
 
-        foreach (var nick in nicknames)
+        foreach (var rawNick in nicknames)
         {
-            if (string.IsNullOrWhiteSpace(nick)) continue;
+            if (string.IsNullOrWhiteSpace(rawNick)) continue;
+            // Same NFC normalization as Register so multi-room overlap detection
+            // hashes to the same key regardless of which packet handler delivered
+            // the nick. Without this, 짭호 in two different rosters could land in
+            // two different dictionary entries → set.Count never reaches 2 →
+            // winner never fires → SelfUserId stays null.
+            var nick = NormalizeNickname(rawNick)!;
 
             _selfNickCandidates.TryGetValue(nick, out int prev);
             _selfNickCandidates[nick] = prev + weight;
@@ -252,8 +298,26 @@ public sealed class NicknameRegistry
     /// (owner_name) to map a summon back to its owner's canonical id so
     /// damage credits the canonical Player row.
     /// </summary>
-    public int? FindUserIdByName(string nickname) =>
-        _nicknameToCanonical.TryGetValue(nickname, out var c) ? c : null;
+    public int? FindUserIdByName(string nickname)
+    {
+        var key = NormalizeNickname(nickname);
+        if (string.IsNullOrEmpty(key)) return null;
+        return _nicknameToCanonical.TryGetValue(key, out var c) ? c : null;
+    }
+
+    /// <summary>
+    /// Returns true if the given nickname has been observed across multiple
+    /// matchmaking rooms in this session — a strong signal that this nick is
+    /// the user's own character (other players don't move between rooms during
+    /// a session). Used by the cold-start kick-detection path in DpsAggregator
+    /// when SelfUserId hasn't been confirmed yet.
+    /// </summary>
+    public bool IsMultiRoomCandidate(string? nickname)
+    {
+        var key = NormalizeNickname(nickname);
+        if (string.IsNullOrEmpty(key)) return false;
+        return _nickGroupIds.TryGetValue(key, out var set) && set.Count >= 2;
+    }
 
     /// <summary>Enumerates canonical entries (one per nickname).</summary>
     public IEnumerable<KeyValuePair<int, NicknameEntry>> All => _entries;

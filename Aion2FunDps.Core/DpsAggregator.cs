@@ -1016,7 +1016,20 @@ public sealed class DpsAggregator
                     //     previously the room id stayed pinned forever after a
                     //     successful clear, blocking new-room detection until
                     //     the next Strong arrived).
-                    if (!LastKilledBossId.HasValue)
+                    //
+                    // AutoResetOnBoss=false addition: in cumulative mode the
+                    // user explicitly chose "no per-boss reset", so OnBossKilled
+                    // returns early and LastKilledBossId never gets stamped.
+                    // Without this guard the PartyLeft path would interpret
+                    // that absence as "no kill happened, safe to wipe", which
+                    // wiped the user's accumulated dungeon totals on dungeon
+                    // exit — directly contradicting the cumulative mode's
+                    // intent. Skip the wipe in that mode too; the next
+                    // ROOM_CHANGE (entering a new matchmaking room) is the
+                    // natural reset trigger that matches user expectation
+                    // (사용자 보고 2026-05-04: 던전 끝나도 누적 유지, 다음
+                    // 원정방 입장 시 리셋).
+                    if (AutoResetOnBoss && !LastKilledBossId.HasValue)
                         WipeMembership();
                     _currentMatchmakingRoom = null;
                 }

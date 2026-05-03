@@ -22,37 +22,46 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include "events.h"
 
 namespace aion2fun {
 
-// Phase 3 callback shape: dispatcher routes by opcode and emits a
-// generic "opcode received" event. Phase 4 will replace this with
-// type-specific event callbacks (DamageEvent, NicknameInfo, etc.) as
-// each handler is ported. Keeping it generic for now lets the
-// dispatcher be unit-testable independently.
-using OpcodeCallback = void(*)(
-    void* ctx,
-    uint8_t op0,
-    uint8_t op1,
-    uint32_t source_ipv4,
-    int64_t timestamp_ticks,
-    const uint8_t* body,
-    int32_t body_length);
-
-// Diagnostic / parse-failure logging hook. Replaces the C# reference's
-// Interlocked.Increment(_malformedCount) + various LogPacket calls.
-// Phase 5 P/Invoke layer will route this to the C# diagnostic logger.
+// Diagnostic / parse-failure logging hook.
 using DispatcherLogCallback = void(*)(
-    void* ctx,
-    int level,
-    const char* message);
+    void* ctx, int level, const char* message);
 
+// Type-specific event callbacks. One per IGameEvent record. Caller fills
+// in only the ones they want; a nullptr entry means "drop this event
+// type silently". Pointers passed to the callbacks alias into the input
+// packet body and are valid only for the duration of the call.
+using DamageCallback         = void(*)(void* ctx, const events::DamageEvent*);
+using MobHpCallback          = void(*)(void* ctx, const events::MobHpUpdate*);
+using EncounterCallback      = void(*)(void* ctx, const events::EncounterAnnouncement*);
+using CombatBoundaryCallback = void(*)(void* ctx, const events::CombatBoundary*);
+using NicknameCallback       = void(*)(void* ctx, const events::NicknameInfo*);
+using SummonSpawnCallback    = void(*)(void* ctx, const events::SummonSpawnInfo*);
+using CombatPowerCallback    = void(*)(void* ctx, const events::CombatPowerUpdate*);
+using PartyLeftCallback      = void(*)(void* ctx, const events::PartyLeft*);
+using DungeonCallback        = void(*)(void* ctx, const events::DungeonAnnouncement*);
+
+// PartyAssembly emits its members via a dedicated callback because one
+// op=0297 packet produces N members. Roster start / containing-self
+// flags are baked into each NicknameInfo.is_roster_start.
+//
 // Bundle of dispatcher callbacks. Caller fills in what they want; any
 // nullptr entry is silently skipped (no-op dispatch).
 struct DispatcherCallbacks {
-    OpcodeCallback         on_opcode = nullptr;
-    DispatcherLogCallback  on_log    = nullptr;
-    void*                  ctx       = nullptr;  // forwarded to all callbacks
+    DispatcherLogCallback  on_log            = nullptr;
+    DamageCallback         on_damage         = nullptr;
+    MobHpCallback          on_mob_hp         = nullptr;
+    EncounterCallback      on_encounter      = nullptr;
+    CombatBoundaryCallback on_combat_boundary= nullptr;
+    NicknameCallback       on_nickname       = nullptr;       // SELF/OTHER/PartyMemberStatus/PartyAssembly emits
+    SummonSpawnCallback    on_summon_spawn   = nullptr;
+    CombatPowerCallback    on_combat_power   = nullptr;
+    PartyLeftCallback      on_party_left     = nullptr;
+    DungeonCallback        on_dungeon        = nullptr;
+    void*                  ctx               = nullptr;
 };
 
 class PacketDispatcher {

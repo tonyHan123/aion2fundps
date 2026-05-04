@@ -1,28 +1,40 @@
 ; exports.def — Explicit symbol export list for Aion2FunDps.Engine.dll
 ;
-; Why a .def file instead of relying on __declspec(dllexport):
-;   - Guarantees stable, undecorated symbol names in the DLL exports table
-;     regardless of compiler / calling convention quirks. P/Invoke from C#
-;     loads symbols by literal name, so name decoration would silently
-;     break linkage on an MSVC version bump.
-;   - Acts as a single-source-of-truth for the public ABI: anything not
-;     listed here is internal and can be refactored freely.
-;   - Tools like dumpbin /exports show this list directly, making it
-;     trivial to verify the DLL surface matches what C# expects.
-;
-; Add new exports here AND add the matching __declspec / extern "C"
-; declaration in include/engine_api.h. Phase 0 starts with the lifecycle
-; quartet; Phases 1-4 add: Aion2Fun_FeedPacket, Aion2Fun_SetOnXxx callbacks,
-; etc. — see TodoWrite list for full plan.
-
-; LIBRARY directive omitted — TargetName from the .vcxproj is the
-; authoritative output name. Including a LIBRARY line here triggers
-; LNK4070 when the names diverge across configs, and the line is
-; ignored by the linker anyway when /OUT: is supplied (it always is
-; under MSBuild).
+; Add new exports here AND add the matching declaration in
+; include/engine_api.h. P/Invoke loads symbols by literal name, so any
+; mismatch silently breaks linkage at runtime — keep this list aligned
+; with the header.
 
 EXPORTS
+    ; Lifecycle / log
     Aion2Fun_GetVersion         @1
     Aion2Fun_Init               @2
     Aion2Fun_Shutdown           @3
     Aion2Fun_SetLogCallback     @4
+
+    ; PacketDispatcher
+    Aion2Fun_Dispatcher_Create                  @10
+    Aion2Fun_Dispatcher_Destroy                 @11
+    Aion2Fun_Dispatcher_SetContext              @12
+    Aion2Fun_Dispatcher_SetOnLog                @13
+    Aion2Fun_Dispatcher_SetOnDamage             @14
+    Aion2Fun_Dispatcher_SetOnMobHp              @15
+    Aion2Fun_Dispatcher_SetOnEncounter          @16
+    Aion2Fun_Dispatcher_SetOnCombatBoundary     @17
+    Aion2Fun_Dispatcher_SetOnNickname           @18
+    Aion2Fun_Dispatcher_SetOnSummonSpawn        @19
+    Aion2Fun_Dispatcher_SetOnCombatPower        @20
+    Aion2Fun_Dispatcher_SetOnPartyLeft          @21
+    Aion2Fun_Dispatcher_SetOnDungeon            @22
+    Aion2Fun_Dispatcher_Dispatch                @23
+    Aion2Fun_Dispatcher_MalformedCount          @24
+    Aion2Fun_Dispatcher_Lz4SuccessCount         @25
+    Aion2Fun_Dispatcher_Lz4FailureCount         @26
+
+    ; FrameAssembler
+    Aion2Fun_FrameAssembler_Create              @30
+    Aion2Fun_FrameAssembler_Destroy             @31
+    Aion2Fun_FrameAssembler_Feed                @32
+    Aion2Fun_FrameAssembler_Reset               @33
+    Aion2Fun_FrameAssembler_MalformedFrames     @34
+    Aion2Fun_FrameAssembler_FlowCount           @35

@@ -1,0 +1,41 @@
+; exports.def — Explicit symbol export list for Aion2FunDps.Engine.dll
+;
+; Add new exports here AND add the matching declaration in
+; include/engine_api.h. P/Invoke loads symbols by literal name, so any
+; mismatch silently breaks linkage at runtime — keep this list aligned
+; with the header.
+
+EXPORTS
+    ; Lifecycle / log
+    Aion2Fun_GetVersion         @1
+    Aion2Fun_Init               @2
+    Aion2Fun_Shutdown           @3
+    Aion2Fun_SetLogCallback     @4
+
+    ; PacketDispatcher
+    Aion2Fun_Dispatcher_Create                  @10
+    Aion2Fun_Dispatcher_Destroy                 @11
+    Aion2Fun_Dispatcher_SetContext              @12
+    Aion2Fun_Dispatcher_SetOnLog                @13
+    Aion2Fun_Dispatcher_SetOnDamage             @14
+    Aion2Fun_Dispatcher_SetOnMobHp              @15
+    Aion2Fun_Dispatcher_SetOnEncounter          @16
+    Aion2Fun_Dispatcher_SetOnCombatBoundary     @17
+    Aion2Fun_Dispatcher_SetOnNickname           @18
+    Aion2Fun_Dispatcher_SetOnSummonSpawn        @19
+    Aion2Fun_Dispatcher_SetOnCombatPower        @20
+    Aion2Fun_Dispatcher_SetOnPartyLeft          @21
+    Aion2Fun_Dispatcher_SetOnDungeon            @22
+    Aion2Fun_Dispatcher_Dispatch                @23
+    Aion2Fun_Dispatcher_MalformedCount          @24
+    Aion2Fun_Dispatcher_Lz4SuccessCount         @25
+    Aion2Fun_Dispatcher_Lz4FailureCount         @26
+    Aion2Fun_Dispatcher_SetOnPartyRoster        @27
+
+    ; FrameAssembler
+    Aion2Fun_FrameAssembler_Create              @30
+    Aion2Fun_FrameAssembler_Destroy             @31
+    Aion2Fun_FrameAssembler_Feed                @32
+    Aion2Fun_FrameAssembler_Reset               @33
+    Aion2Fun_FrameAssembler_MalformedFrames     @34
+    Aion2Fun_FrameAssembler_FlowCount           @35

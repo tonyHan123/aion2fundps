@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Aion2FunDps.Engine.vcxproj — Native C++ DLL project.
+
+  Why this is a .vcxproj instead of CMake:
+    - Sits inside the Aion2FunDps solution alongside the .NET projects so
+      the whole stack builds with a single `msbuild` / "Build Solution"
+      command. No second build system to teach contributors.
+    - VS 2022/2026 native debugging (mixed managed/native) just works.
+    - Cross-platform isn't a goal — the meter is Windows-only, our wire
+      protocol layer needs Win32 types anyway, so platform parity costs
+      we'd pay for CMake have no payback.
+
+  Build outputs:
+    bin\$(Configuration)\Aion2FunDps.Engine.dll  + .lib + .pdb
+  The C# host project Aion2FunDps.App.csproj will reference this output
+  via a P/Invoke binding; .pdb stays alongside for native debugging.
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+    <!-- Platform / configuration matrix. We only build x64 — the meter
+         is x64-only (matches the parent .NET target net10.0-windows on
+         x64). Win32 (x86) entry omitted entirely so accidental x86
+         builds fail loudly. -->
+    <ItemGroup Label="ProjectConfigurations">
+        <ProjectConfiguration Include="Debug|x64">
+            <Configuration>Debug</Configuration>
+            <Platform>x64</Platform>
+        </ProjectConfiguration>
+        <ProjectConfiguration Include="Release|x64">
+            <Configuration>Release</Configuration>
+            <Platform>x64</Platform>
+        </ProjectConfiguration>
+    </ItemGroup>
+
+    <PropertyGroup Label="Globals">
+        <VCProjectVersion>17.0</VCProjectVersion>
+        <ProjectGuid>{B4F5A1E3-9D2C-4F8E-A7B6-1234567890AB}</ProjectGuid>
+        <RootNamespace>Aion2FunDpsEngine</RootNamespace>
+        <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+        <ProjectName>Aion2FunDps.Engine</ProjectName>
+    </PropertyGroup>
+
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+    <PropertyGroup Label="Configuration">
+        <ConfigurationType>DynamicLibrary</ConfigurationType>
+        <!-- v145 is the MSVC platform toolset shipped with VS 2026
+             (located under MSBuild/Microsoft/VC/v180/Platforms/x64/
+             PlatformToolsets/v145/). The "v180" outer directory is the
+             MSBuild integration version; the toolset name itself is
+             v145. Update when bumping VS major version. -->
+        <PlatformToolset>v145</PlatformToolset>
+        <CharacterSet>Unicode</CharacterSet>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+        <UseDebugLibraries>true</UseDebugLibraries>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)'=='Release'">
+        <UseDebugLibraries>false</UseDebugLibraries>
+        <WholeProgramOptimization>true</WholeProgramOptimization>
+    </PropertyGroup>
+
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+    <PropertyGroup>
+        <!-- Bring outputs to a predictable per-config path. The C# side
+             expects to find the DLL via these paths during dev. The
+             release pipeline copies the final DLL alongside the published
+             single-file exe (build-release.ps1). -->
+        <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+        <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+        <TargetName>Aion2FunDps.Engine</TargetName>
+    </PropertyGroup>
+
+    <ItemDefinitionGroup>
+        <ClCompile>
+            <!-- C++17 is the floor — we use std::atomic, structured
+                 bindings in tests, etc. Newer features (C++20 modules)
+                 aren't needed and would slow build times. -->
+            <LanguageStandard>stdcpp17</LanguageStandard>
+            <ConformanceMode>true</ConformanceMode>
+            <SDLCheck>true</SDLCheck>
+
+            <!-- Treat warnings as errors in Release. Debug stays
+                 permissive so iteration isn't blocked by minor noise. -->
+            <WarningLevel>Level4</WarningLevel>
+            <TreatWarningAsError Condition="'$(Configuration)'=='Release'">true</TreatWarningAsError>
+
+            <PreprocessorDefinitions>WIN32;_WINDOWS;_USRDLL;AION2FUN_ENGINE_BUILDING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+            <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+            <!-- /utf-8 forces both source-charset and execution-charset
+                 to UTF-8. Without it, MSVC interprets sources as the
+                 system code page (CP949 on KR Windows) and warns C4819
+                 on any non-ASCII character (Korean comments etc.).
+                 BOM-based detection is fragile across editors; explicit
+                 flag is the canonical fix per Microsoft's own docs. -->
+            <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+
+            <!-- Disable RTTI / exceptions partially — we use exceptions
+                 internally but they NEVER cross the C ABI boundary; the
+                 extern "C" thunks catch all and translate to error codes.
+                 Keep enabled here for now since std::atomic / std::vector
+                 rely on basic exception support. -->
+            <ExceptionHandling>Sync</ExceptionHandling>
+            <RuntimeTypeInfo>true</RuntimeTypeInfo>
+        </ClCompile>
+
+        <Link>
+            <SubSystem>Windows</SubSystem>
+            <ModuleDefinitionFile>$(ProjectDir)exports.def</ModuleDefinitionFile>
+            <GenerateDebugInformation>true</GenerateDebugInformation>
+        </Link>
+    </ItemDefinitionGroup>
+
+    <ItemGroup>
+        <ClInclude Include="include\engine_api.h" />
+        <ClInclude Include="src\events.h" />
+        <ClInclude Include="src\varint.h" />
+        <ClInclude Include="src\lz4_decompress.h" />
+        <ClInclude Include="src\frame_assembler.h" />
+        <ClInclude Include="src\compression_detector.h" />
+        <ClInclude Include="src\packet_dispatcher.h" />
+        <ClInclude Include="src\nickname_validator.h" />
+        <ClInclude Include="src\handlers\combat_boundary.h" />
+        <ClInclude Include="src\handlers\mob_hp.h" />
+        <ClInclude Include="src\handlers\encounter_announce.h" />
+        <ClInclude Include="src\handlers\damage.h" />
+        <ClInclude Include="src\handlers\dot.h" />
+        <ClInclude Include="src\handlers\self_nickname.h" />
+        <ClInclude Include="src\handlers\other_nickname.h" />
+        <ClInclude Include="src\handlers\summon_spawn.h" />
+        <ClInclude Include="src\handlers\combat_power.h" />
+        <ClInclude Include="src\handlers\party_member_status.h" />
+        <ClInclude Include="src\handlers\party_bulk_info.h" />
+        <ClInclude Include="src\handlers\party_assembly.h" />
+        <ClInclude Include="third_party\lz4\lz4.h" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ClCompile Include="src\engine_api.cpp" />
+        <ClCompile Include="src\varint.cpp" />
+        <ClCompile Include="src\lz4_decompress.cpp" />
+        <ClCompile Include="src\frame_assembler.cpp" />
+        <ClCompile Include="src\compression_detector.cpp" />
+        <ClCompile Include="src\packet_dispatcher.cpp" />
+        <ClCompile Include="src\nickname_validator.cpp" />
+        <ClCompile Include="src\handlers\combat_boundary.cpp" />
+        <ClCompile Include="src\handlers\mob_hp.cpp" />
+        <ClCompile Include="src\handlers\encounter_announce.cpp" />
+        <ClCompile Include="src\handlers\damage.cpp" />
+        <ClCompile Include="src\handlers\dot.cpp" />
+        <ClCompile Include="src\handlers\self_nickname.cpp" />
+        <ClCompile Include="src\handlers\other_nickname.cpp" />
+        <ClCompile Include="src\handlers\summon_spawn.cpp" />
+        <ClCompile Include="src\handlers\combat_power.cpp" />
+        <ClCompile Include="src\handlers\party_member_status.cpp" />
+        <ClCompile Include="src\handlers\party_bulk_info.cpp" />
+        <ClCompile Include="src\handlers\party_assembly.cpp" />
+        <!-- Third-party LZ4 reference (BSD-2-Clause). C source compiled
+             with the C++ compiler is fine since the lz4 library is
+             written in portable C and uses no C++-incompatible features.
+             We disable the SDL warning-as-error treatment for this one
+             file because the reference impl doesn't pass our /W4 bar
+             (intentional — third-party code we don't own). -->
+        <ClCompile Include="third_party\lz4\lz4.c">
+            <SDLCheck>false</SDLCheck>
+            <WarningLevel>TurnOffAllWarnings</WarningLevel>
+            <TreatWarningAsError>false</TreatWarningAsError>
+            <CompileAs>CompileAsC</CompileAs>
+        </ClCompile>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="exports.def" />
+        <None Include="third_party\lz4\LICENSE" />
+    </ItemGroup>
+
+    <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+</Project>

@@ -11,7 +11,7 @@ namespace Aion2FunDps.Protocol;
 /// Routes GamePackets to opcode-specific handlers, emits typed IGameEvents.
 /// Handles LZ4-compressed packets recursively (decompress → re-frame inner packets).
 /// </summary>
-public sealed class PacketDispatcher
+public sealed class PacketDispatcher : IDispatcherTelemetry
 {
     private readonly Lz4Decompressor _lz4 = new();
 

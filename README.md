@@ -16,10 +16,25 @@
 
 ## 차별점
 
-- 🔓 **오픈소스 MIT** — 코드 100% 공개. 폐쇄 네이티브 DLL 의존성 없음
+- 🔓 **오픈소스 MIT** — C# UI/로직 + C++ 패킷 파서 모두 본 저장소에 소스 공개. 외부 폐쇄 의존성 없음
 - 🛡️ **데이터 누출 0** — 측정 데이터 어디로도 안 보냄. 100% 로컬
 - 💸 **완전 무료** — 광고/구독/결제 없음
 - 📊 **신뢰도 표시** — HP-데미지 교차검증 누수율 실시간 표시
+- ⚡ **게임에 0 영향** — 메모리 100MB 이하, CPU 3% 이하 (전투 중), 게임 FPS 영향 1 이하 보장
+
+## 성능 commitment
+
+> "게임 켰는데 미터기 때문에 렉걸리면 안돼" — 사용자 피드백 2026-04-28
+
+| 지표 | 목표 |
+|---|---|
+| CPU (게임 idle) | < 1% |
+| CPU (격렬한 전투 중) | < 3% |
+| 메모리 (Working Set) | < 100 MB |
+| 게임 FPS 영향 | < 1 FPS |
+| 프레임 시간 영향 | < 0.1 ms |
+
+순수 C# + WPF + 네이티브 C++ 파서로 구성. JVM/Electron/Chromium/Flutter 전혀 사용하지 않음. 캡처 스레드는 BPF 커널 필터 + bounded channel + ArrayPool 으로 hot-path 할당 0.
 
 ## ⚠️ 백신 오탐 안내 (필수)
 
@@ -27,9 +42,10 @@
 
 ### 어떻게 확인할 수 있나요?
 
-1. **모든 소스 코드 공개** → 이 저장소에서 직접 검토
+1. **모든 소스 코드 공개** → 이 저장소에서 직접 검토 (C# + C++ 둘 다)
 2. **VirusTotal** → https://www.virustotal.com 에 .exe 업로드해서 다른 백신들 결과 비교
 3. **직접 빌드** → 의심되시면 본인이 빌드 ([BUILD.md](BUILD.md))
+4. **ILSpy / dotPeek** → exe 분해해서 .NET 코드가 저장소와 일치하는지 확인 (Release 빌드는 ConfuserEx 2 로 난독화되어 있어 일부 메소드는 가독성 떨어질 수 있음 — 의심되시면 직접 빌드 비교 권장)
 
 ### 백신 오탐 시 대처
 
@@ -50,7 +66,16 @@
 3. https://npcap.com 에서 Npcap 설치 (꼭 **'Install Npcap in WinPcap API-compatible Mode'** 체크)
 4. 미터 다시 실행 → 게임 띄우고 사용
 
-화면 상단의 ⚙ (설정) → 테마 변경, 단축키 지정, 자동 리셋 토글 등.
+화면 상단의 ⚙ (설정) → 테마 변경, 단축키 지정, 자동 리셋 토글, 컴팩트 모드 등.
+
+### 단축키 (기본값)
+
+| 키 | 동작 |
+|---|---|
+| `Ctrl+R` | 세션 리셋 |
+| `클릭`(파티원 행) | 스킬 상세 보기 |
+
+⚙ 에서 자유롭게 변경 가능. 시스템 단축키 (Win32 RegisterHotKey) 라 게임 창에 포커스 있어도 동작.
 
 ## 면책 조항
 
@@ -76,13 +101,20 @@
 
 ```
 aion2fundps/
-├── Aion2FunDps.Capture    # Npcap 패킷 캡처 + TCP 재조립
-├── Aion2FunDps.Protocol   # LZ4 해제 + opcode dispatcher + 핸들러
-├── Aion2FunDps.Core       # 도메인 모델 + 통계 + 신뢰도 + 카탈로그
-├── Aion2FunDps.Storage    # 정적 게임 데이터 (몹/던전/버프)
-├── Aion2FunDps.UI         # WPF ViewModel + 클래스 아이콘 팩토리
-└── Aion2FunDps.App        # WPF 진입점 + 창 + 테마
+├── Aion2FunDps.Capture          # Npcap 패킷 캡처 + TCP 재조립
+├── Aion2FunDps.Protocol         # opcode dispatcher + 12 핸들러 (managed)
+│   └── NativeEngine             # C++ 엔진과의 P/Invoke 어댑터
+├── Aion2FunDps.Engine           # C++ 패킷 파서 DLL (LZ4 + varint + 12 핸들러)
+├── Aion2FunDps.Core             # 도메인 모델 + 통계 + 신뢰도 + 카탈로그
+├── Aion2FunDps.Storage          # 정적 게임 데이터 (몹/던전/버프)
+├── Aion2FunDps.UI               # WPF ViewModel + 클래스 아이콘 팩토리
+├── Aion2FunDps.App              # WPF 진입점 + 창 + 테마 + 단축키
+├── Aion2FunDps.NativeRegression # C++/C# 엔진 동등성 회귀 검증 도구
+└── Aion2FunDps.DevConsole       # 라이브 캡처 콘솔 (개발용)
 ```
+
+**Native vs Managed 엔진:**
+패킷 파싱은 두 경로가 모두 구현되어 있고 byte-for-byte 동일한 이벤트 스트림을 만들도록 회귀 검증됩니다 (`Aion2FunDps.NativeRegression`). 알파에서는 검증된 managed 경로가 default 로 동작하고, native 경로는 `App.UseNativeEngine` 플래그로 토글합니다 — RE 저항 강화가 필요해질 때 native 로 전환할 수 있도록 양 경로를 유지합니다.
 
 ## 빌드 방법
 

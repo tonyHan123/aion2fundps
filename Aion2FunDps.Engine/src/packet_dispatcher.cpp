@@ -11,6 +11,9 @@
 #include "lz4_decompress.h"
 #include "varint.h"
 
+#include <algorithm>
+#include <cstring>
+
 #include "handlers/combat_boundary.h"
 #include "handlers/mob_hp.h"
 #include "handlers/encounter_announce.h"
@@ -193,6 +196,13 @@ void PacketDispatcher::DispatchOpcode(
     if (op0 == 0x33 && op1 == 0x36) {
         events::NicknameInfo evt{};
         if (handlers::try_parse_self_nickname(body, blen, timestamp_ticks, source_ipv4, evt)) {
+            // Cache self user_id + nickname for later op=01 97 self-presence
+            // gating (multi-room broadcast picks the user's room block by
+            // matching either id or nickname).
+            last_self_user_id_ = evt.user_id;
+            if (evt.nickname && evt.nickname_len > 0) {
+                last_self_nickname_.assign(evt.nickname, static_cast<size_t>(evt.nickname_len));
+            }
             if (cbs.on_nickname) cbs.on_nickname(cbs.ctx, &evt);
         } else {
             ++malformed_count_;
@@ -233,25 +243,124 @@ void PacketDispatcher::DispatchOpcode(
         return;
     }
 
-    // 02 97 — matchmaking/party-assembly broadcast (multi-member emit)
+    // 02 97 — matchmaking/party-assembly broadcast. Emits a single
+    // PartyRosterUpdate (Strong) bundling all parsed members. Dungeon
+    // id is emitted FIRST (before the roster) to match managed dispatcher
+    // ordering — see PacketDispatcher.cs:783-785.
     if (op0 == 0x02 && op1 == 0x97) {
-        if (cbs.on_nickname != nullptr) {
-            handlers::try_parse_party_assembly(
-                body, blen, timestamp_ticks, source_ipv4,
-                cbs.on_nickname, cbs.ctx);
-        }
-
-        // Optional dungeon-id extraction from the same packet.
+        // Dungeon-id first (managed order).
         if (cbs.on_dungeon != nullptr) {
             const int32_t dungeon_id = handlers::extract_dungeon_id(body, blen);
             if (dungeon_id != 0) {
-                events::DungeonAnnouncement evt{};
-                evt.dungeon_id       = dungeon_id;
-                evt.timestamp_ticks  = timestamp_ticks;
-                evt.source_ipv4      = source_ipv4;
-                cbs.on_dungeon(cbs.ctx, &evt);
+                events::DungeonAnnouncement devt{};
+                devt.dungeon_id       = dungeon_id;
+                devt.timestamp_ticks  = timestamp_ticks;
+                devt.source_ipv4      = source_ipv4;
+                cbs.on_dungeon(cbs.ctx, &devt);
             }
         }
+
+        // Collect members into the dispatcher-owned scratch vector.
+        const int32_t group_id = handlers::parse_party_assembly_collect(
+            body, blen, timestamp_ticks, source_ipv4, roster_scratch_);
+
+        // Always emit when group_id != 0 OR members non-empty — empty
+        // broadcasts that still carry a valid groupId tell the aggregator
+        // "the room is now empty / you left", needed to wipe stale state.
+        // Matches PacketDispatcher.cs:813.
+        if (group_id != 0 || !roster_scratch_.empty()) {
+            if (group_id != 0) current_lobby_room_id_ = group_id;
+            if (cbs.on_party_roster != nullptr) {
+                events::PartyRosterUpdate evt{};
+                evt.group_id        = group_id;
+                evt.members         = roster_scratch_.data();
+                evt.members_count   = static_cast<int32_t>(roster_scratch_.size());
+                evt.timestamp_ticks = timestamp_ticks;
+                evt.source_ipv4     = source_ipv4;
+                evt.confidence      = events::RC_Strong;
+                evt.contains_self   = 1;  // op=0297 is host-broadcast — always our room
+                cbs.on_party_roster(cbs.ctx, &evt);
+            }
+        } else {
+            ++malformed_count_;
+        }
+        return;
+    }
+
+    // 01 97 — multi-room lobby broadcast. Different opcode from 01 91
+    // (encounter announce). Carries the user's matchmaking room AND
+    // adjacent rooms shown in the lobby browser. Self-presence gate:
+    // only emit PartyRosterUpdate(Weak) when the user's id or nickname
+    // appears in a room block — otherwise it's a preview of other rooms
+    // and applying it as our roster would pollute party state.
+    if (op0 == 0x01 && op1 == 0x97) {
+        const auto rooms = handlers::parse_room_blocks(
+            body, blen, /*start_pos=*/2, timestamp_ticks, source_ipv4);
+
+        // Best-block selection. Prefer self-bearing blocks (only ones
+        // safe for weak removal); break ties by member count. Fall back
+        // to roomId match (add-only).
+        const handlers::RoomBlock* best_self_block = nullptr;
+        const handlers::RoomBlock* best_room_id_block = nullptr;
+        for (const auto& room : rooms) {
+            bool has_self_id = (last_self_user_id_ != 0)
+                && std::any_of(room.members.begin(), room.members.end(),
+                    [this](const events::NicknameInfo& m) {
+                        return m.user_id == last_self_user_id_;
+                    });
+            bool has_self_nick = !last_self_nickname_.empty()
+                && std::any_of(room.members.begin(), room.members.end(),
+                    [this](const events::NicknameInfo& m) {
+                        if (m.nickname == nullptr || m.nickname_len <= 0) return false;
+                        if (static_cast<size_t>(m.nickname_len) != last_self_nickname_.size()) return false;
+                        return std::memcmp(m.nickname, last_self_nickname_.data(),
+                                           last_self_nickname_.size()) == 0;
+                    });
+            const bool has_self = has_self_id || has_self_nick;
+            const bool is_current_room = (current_lobby_room_id_ != 0)
+                && room.group_id == current_lobby_room_id_;
+
+            if (has_self) {
+                if (best_self_block == nullptr
+                    || room.members.size() > best_self_block->members.size()) {
+                    best_self_block = &room;
+                }
+            } else if (is_current_room) {
+                if (best_room_id_block == nullptr
+                    || room.members.size() > best_room_id_block->members.size()) {
+                    best_room_id_block = &room;
+                }
+            }
+        }
+
+        const handlers::RoomBlock* matched =
+            best_self_block ? best_self_block : best_room_id_block;
+        const bool contains_self = best_self_block != nullptr;
+
+        if (matched != nullptr) {
+            current_lobby_room_id_ = matched->group_id;
+            // Empty parse for the matched room is almost always a parser
+            // miss in this noisy multi-room layout — keep last roster.
+            // Managed equivalent: PacketDispatcher.cs:590-598.
+            if (matched->members.empty()) return;
+
+            if (cbs.on_party_roster != nullptr) {
+                events::PartyRosterUpdate evt{};
+                evt.group_id        = matched->group_id;
+                evt.members         = matched->members.data();
+                evt.members_count   = static_cast<int32_t>(matched->members.size());
+                evt.timestamp_ticks = timestamp_ticks;
+                evt.source_ipv4     = source_ipv4;
+                evt.confidence      = events::RC_Weak;
+                evt.contains_self   = contains_self ? 1 : 0;
+                cbs.on_party_roster(cbs.ctx, &evt);
+            }
+        }
+        // Self not in any block → lobby browser preview. Explicitly
+        // RETURN so this packet doesn't fall through to the generic
+        // op1==0x97 catch-all and parse a random byte slice as a status
+        // ping (would pollute NicknameRegistry). Mirrors
+        // PacketDispatcher.cs:618-620 critical-bug fix.
         return;
     }
 

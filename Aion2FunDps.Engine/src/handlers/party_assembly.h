@@ -21,9 +21,18 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 #include "../events.h"
 
 namespace aion2fun::handlers {
+
+// Single room block parsed out of a multi-room op=0197 packet. Holds the
+// matchmaking room id + members scanned between this header and the next
+// (or end-of-packet for the last block).
+struct RoomBlock {
+    int32_t group_id;
+    std::vector<events::NicknameInfo> members;
+};
 
 // Per-member callback fired for each parsed NicknameInfo within a single
 // op=0297 / op=0197 broadcast. The NicknameInfo's nickname pointer aliases
@@ -57,6 +66,26 @@ void scan_for_nicknames(
 // op=0197 dungeon id extraction (matches A2Viewer's ScanDungeonIdRaw).
 // Returns 0 when no dungeon signal present.
 int32_t extract_dungeon_id(const uint8_t* body, size_t body_length) noexcept;
+
+// Vector-collecting variant for op=02 97 — parses the single-room
+// assembly broadcast, fills `out_members`, returns the group_id (0 on
+// malformed). Caller passes a reusable scratch vector; this function
+// clear()s it on entry and resizes via push_back.
+int32_t parse_party_assembly_collect(
+    const uint8_t* body, size_t body_length,
+    int64_t timestamp_ticks,
+    uint32_t source_ipv4,
+    std::vector<events::NicknameInfo>& out_members) noexcept;
+
+// Multi-room parser for op=01 97. Walks the body looking for room
+// headers (groupId + nameLen + name + 04/00/03 marker tail) and scans
+// members between consecutive headers. Direct port of
+// PartyAssemblyHandler.ParseRoomBlocks.
+std::vector<RoomBlock> parse_room_blocks(
+    const uint8_t* body, size_t body_length,
+    size_t start_pos,
+    int64_t timestamp_ticks,
+    uint32_t source_ipv4) noexcept;
 
 }  // namespace aion2fun::handlers
 

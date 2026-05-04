@@ -30,6 +30,7 @@ EXPORTS
     Aion2Fun_Dispatcher_MalformedCount          @24
     Aion2Fun_Dispatcher_Lz4SuccessCount         @25
     Aion2Fun_Dispatcher_Lz4FailureCount         @26
+    Aion2Fun_Dispatcher_SetOnPartyRoster        @27
 
     ; FrameAssembler
     Aion2Fun_FrameAssembler_Create              @30

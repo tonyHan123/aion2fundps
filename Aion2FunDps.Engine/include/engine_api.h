@@ -144,6 +144,20 @@ typedef struct {
     uint32_t source_ipv4;
 } Aion2FunDungeonAnnouncement;
 
+// PartyRosterUpdate carries an array of NicknameInfo members. The members
+// pointer aliases into a dispatcher-owned scratch vector and is valid only
+// during the callback. Confidence values: 0=Strong (op=0297 / 6ae2),
+// 1=Weak (op=0197 multi-room broadcast).
+typedef struct {
+    int32_t  group_id;
+    const Aion2FunNicknameInfo* members;
+    int32_t  members_count;
+    int64_t  timestamp_ticks;
+    uint32_t source_ipv4;
+    uint8_t  confidence;
+    uint8_t  contains_self;
+} Aion2FunPartyRosterUpdate;
+
 // =====================================================================
 // Event callback typedefs
 // =====================================================================
@@ -157,6 +171,7 @@ typedef void (*Aion2FunOnSummonSpawn)   (void* ctx, const Aion2FunSummonSpawnInf
 typedef void (*Aion2FunOnCombatPower)   (void* ctx, const Aion2FunCombatPowerUpdate*);
 typedef void (*Aion2FunOnPartyLeft)     (void* ctx, const Aion2FunPartyLeft*);
 typedef void (*Aion2FunOnDungeon)       (void* ctx, const Aion2FunDungeonAnnouncement*);
+typedef void (*Aion2FunOnPartyRoster)   (void* ctx, const Aion2FunPartyRosterUpdate*);
 
 // =====================================================================
 // PacketDispatcher
@@ -183,6 +198,7 @@ AION2FUN_ENGINE_EXPORT void Aion2Fun_Dispatcher_SetOnSummonSpawn   (Aion2FunDisp
 AION2FUN_ENGINE_EXPORT void Aion2Fun_Dispatcher_SetOnCombatPower   (Aion2FunDispatcherHandle h, Aion2FunOnCombatPower cb);
 AION2FUN_ENGINE_EXPORT void Aion2Fun_Dispatcher_SetOnPartyLeft     (Aion2FunDispatcherHandle h, Aion2FunOnPartyLeft cb);
 AION2FUN_ENGINE_EXPORT void Aion2Fun_Dispatcher_SetOnDungeon       (Aion2FunDispatcherHandle h, Aion2FunOnDungeon cb);
+AION2FUN_ENGINE_EXPORT void Aion2Fun_Dispatcher_SetOnPartyRoster   (Aion2FunDispatcherHandle h, Aion2FunOnPartyRoster cb);
 
 // Feed one complete game-packet body (already varint-framed by the
 // FrameAssembler). Fires whichever event callback matches the opcode.

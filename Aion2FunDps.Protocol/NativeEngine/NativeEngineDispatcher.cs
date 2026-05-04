@@ -174,6 +174,46 @@ public sealed class NativeEngineDispatcher : IDisposable, IDispatcherTelemetry
         };
         _pinnedDelegates.Add(onDungeon);
         NEI.Aion2Fun_Dispatcher_SetOnDungeon(_handle, onDungeon);
+
+        NEI.OnPartyRoster onPartyRoster = (IntPtr ctx, ref NEI.PartyRosterUpdate e) =>
+        {
+            // Marshal the members array (pointer aliases native scratch and is
+            // only valid during this callback). Walk and copy each
+            // Aion2FunNicknameInfo POD into a managed Core.Models.NicknameInfo
+            // record so the emitted event survives past the callback return.
+            var members = new List<Core.Models.NicknameInfo>(e.MembersCount);
+            int podSize = Marshal.SizeOf<NEI.NicknameInfo>();
+            for (int i = 0; i < e.MembersCount; i++)
+            {
+                IntPtr p = e.Members + i * podSize;
+                var m = Marshal.PtrToStructure<NEI.NicknameInfo>(p);
+                string nickname = MarshalUtf8(m.Nickname, m.NicknameLen);
+                members.Add(new Core.Models.NicknameInfo(
+                    UserId:         m.UserId,
+                    Nickname:       nickname,
+                    IsSelf:         m.IsSelf != 0,
+                    Server:         m.Server,
+                    Job:            m.Job,
+                    CombatPower:    m.CombatPower,
+                    TimestampTicks: m.TimestampTicks,
+                    SourceIpv4:     m.SourceIpv4,
+                    IsPartyMember:  m.IsPartyMember != 0,
+                    IsRosterStart:  m.IsRosterStart != 0,
+                    GroupId:        m.RoomId));
+            }
+
+            _emit(new Core.Models.PartyRosterUpdate(
+                GroupId:        e.GroupId,
+                Members:        members,
+                TimestampTicks: e.TimestampTicks,
+                SourceIpv4:     e.SourceIpv4,
+                Confidence:     e.Confidence == 0
+                    ? Core.Models.RosterConfidence.Strong
+                    : Core.Models.RosterConfidence.Weak,
+                ContainsSelf:   e.ContainsSelf != 0));
+        };
+        _pinnedDelegates.Add(onPartyRoster);
+        NEI.Aion2Fun_Dispatcher_SetOnPartyRoster(_handle, onPartyRoster);
     }
 
     /// <summary>

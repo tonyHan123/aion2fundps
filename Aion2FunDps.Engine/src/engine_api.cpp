@@ -48,6 +48,8 @@ static_assert(sizeof(Aion2FunPartyLeft) == sizeof(aion2fun::events::PartyLeft),
               "PartyLeft ABI mismatch");
 static_assert(sizeof(Aion2FunDungeonAnnouncement) == sizeof(aion2fun::events::DungeonAnnouncement),
               "DungeonAnnouncement ABI mismatch");
+static_assert(sizeof(Aion2FunPartyRosterUpdate) == sizeof(aion2fun::events::PartyRosterUpdate),
+              "PartyRosterUpdate ABI mismatch");
 
 // ---------------------------------------------------------------------
 // Module-level state (lifecycle)
@@ -175,6 +177,10 @@ void Aion2Fun_Dispatcher_SetOnPartyLeft(Aion2FunDispatcherHandle h, Aion2FunOnPa
 void Aion2Fun_Dispatcher_SetOnDungeon(Aion2FunDispatcherHandle h, Aion2FunOnDungeon cb) {
     if (auto* d = as_disp(h)) d->cbs.on_dungeon =
         reinterpret_cast<aion2fun::DungeonCallback>(cb);
+}
+void Aion2Fun_Dispatcher_SetOnPartyRoster(Aion2FunDispatcherHandle h, Aion2FunOnPartyRoster cb) {
+    if (auto* d = as_disp(h)) d->cbs.on_party_roster =
+        reinterpret_cast<aion2fun::PartyRosterCallback>(cb);
 }
 
 void Aion2Fun_Dispatcher_Dispatch(

@@ -140,6 +140,18 @@ internal static class NativeEngineInterop
         public uint SourceIpv4;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PartyRosterUpdate
+    {
+        public int    GroupId;
+        public IntPtr Members;          // *NicknameInfo[MembersCount] — valid only during callback
+        public int    MembersCount;
+        public long   TimestampTicks;
+        public uint   SourceIpv4;
+        public byte   Confidence;       // 0=Strong, 1=Weak
+        public byte   ContainsSelf;
+    }
+
     // =========================================================================
     // Event callback delegates — Cdecl, ctx as first arg matching engine_api.h
     // =========================================================================
@@ -170,6 +182,9 @@ internal static class NativeEngineInterop
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void OnDungeon(IntPtr ctx, ref DungeonAnnouncement evt);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void OnPartyRoster(IntPtr ctx, ref PartyRosterUpdate evt);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void OnGamePacket(
@@ -213,6 +228,8 @@ internal static class NativeEngineInterop
     public static extern void Aion2Fun_Dispatcher_SetOnPartyLeft(IntPtr h, OnPartyLeft cb);
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern void Aion2Fun_Dispatcher_SetOnDungeon(IntPtr h, OnDungeon cb);
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void Aion2Fun_Dispatcher_SetOnPartyRoster(IntPtr h, OnPartyRoster cb);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern void Aion2Fun_Dispatcher_Dispatch(

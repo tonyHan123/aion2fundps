@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 #include "events.h"
 
@@ -43,10 +44,13 @@ using SummonSpawnCallback    = void(*)(void* ctx, const events::SummonSpawnInfo*
 using CombatPowerCallback    = void(*)(void* ctx, const events::CombatPowerUpdate*);
 using PartyLeftCallback      = void(*)(void* ctx, const events::PartyLeft*);
 using DungeonCallback        = void(*)(void* ctx, const events::DungeonAnnouncement*);
+using PartyRosterCallback    = void(*)(void* ctx, const events::PartyRosterUpdate*);
 
-// PartyAssembly emits its members via a dedicated callback because one
-// op=0297 packet produces N members. Roster start / containing-self
-// flags are baked into each NicknameInfo.is_roster_start.
+// PartyAssembly aggregates its members into a single PartyRosterUpdate
+// event (matching managed dispatcher behavior). The members array is a
+// dispatcher-owned scratch vector; the C# side must marshal it during
+// the callback. on_nickname still fires for SELF/OTHER/PartyMemberStatus
+// individual nickname packets — the roster path bypasses it.
 //
 // Bundle of dispatcher callbacks. Caller fills in what they want; any
 // nullptr entry is silently skipped (no-op dispatch).
@@ -56,11 +60,12 @@ struct DispatcherCallbacks {
     MobHpCallback          on_mob_hp         = nullptr;
     EncounterCallback      on_encounter      = nullptr;
     CombatBoundaryCallback on_combat_boundary= nullptr;
-    NicknameCallback       on_nickname       = nullptr;       // SELF/OTHER/PartyMemberStatus/PartyAssembly emits
+    NicknameCallback       on_nickname       = nullptr;       // SELF/OTHER/PartyMemberStatus only
     SummonSpawnCallback    on_summon_spawn   = nullptr;
     CombatPowerCallback    on_combat_power   = nullptr;
     PartyLeftCallback      on_party_left     = nullptr;
     DungeonCallback        on_dungeon        = nullptr;
+    PartyRosterCallback    on_party_roster   = nullptr;       // op=0297 / op=0197 aggregate emit
     void*                  ctx               = nullptr;
 };
 
@@ -96,6 +101,22 @@ private:
     // typical session has consistent max packet size and the cost of
     // shrinking + regrowing exceeds the memory savings.
     std::vector<uint8_t> decompress_scratch_;
+
+    // PartyRoster scratch — reused across op=0297 / op=0197 emits so we
+    // don't reallocate the member vector each time. Never shrinks; clears
+    // before each parse fills it.
+    std::vector<events::NicknameInfo> roster_scratch_;
+
+    // Self-presence tracking. Updated in op=33 36 (self nickname) parses,
+    // read in op=01 97 multi-room scan to pick the user's own room block.
+    // Mirror of managed SelfNicknameHandler.LastSelfUserId / LastSelfNickname.
+    int32_t      last_self_user_id_   = 0;        // 0 = not yet seen
+    std::string  last_self_nickname_;             // empty = not yet seen
+
+    // Last lobby room id seen — set from op=02 97 / op=01 97 parses.
+    // Used in op=01 97 to disambiguate between the user's room and
+    // adjacent rooms when self_id isn't in the parsed members yet.
+    int32_t      current_lobby_room_id_ = 0;
 
     int64_t malformed_count_   = 0;
     int64_t lz4_success_count_ = 0;

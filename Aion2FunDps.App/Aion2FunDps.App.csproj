@@ -52,4 +52,25 @@
     </Content>
   </ItemGroup>
 
+  <!-- Native engine DLL deployment. The C++ project Aion2FunDps.Engine.vcxproj
+       builds Aion2FunDps.Engine.dll separately (msbuild on the .vcxproj);
+       this <None> include copies it next to Aion2FunDps.App.exe so the
+       P/Invoke layer in NativeEngineDispatcher can load it via the Win32
+       LoadLibrary search order. Conditioned on existence so dotnet build
+       still succeeds before the C++ project has been built once. The .pdb
+       follows for native-side stack traces in mixed managed/native
+       debugging. -->
+  <ItemGroup>
+    <None Include="..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.dll"
+          Condition="Exists('..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.dll')">
+      <Link>Aion2FunDps.Engine.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.pdb"
+          Condition="Exists('..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.pdb')">
+      <Link>Aion2FunDps.Engine.pdb</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

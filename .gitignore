@@ -484,3 +484,42 @@ $RECYCLE.BIN/
 # One-shot data analysis scripts (not part of the build)
 /tools/
 
+# Claude Code workspace / agent state — per-user tooling cache, never
+# committed.
+.claude/
+
+# Local .NET SDK install cache (when bootstrapping dotnet without admin).
+.dotnet/
+
+# Per-build dotnet output redirected to file. Useful while iterating
+# but not source state.
+**/build-log.txt
+
+# Live capture / Sysinternals trace artifacts left in the repo root by
+# debugging sessions. Wire bytes can carry account ids; keep out.
+Logfile.CSV
+Logfile.PML
+*.pcap
+*.pcapng
+udp-dump.log
+
+# Per-session debug logs written next to the .exe in Debug builds. The
+# App.xaml.cs DiagnosticLogPath setters are #if DEBUG so these only
+# appear when running from the IDE — keep them out of the repo state.
+nick-debug.log
+mobspawn-debug.log
+encounter-debug.log
+profile-debug.log
+summon-spawn-debug.log
+party-assembly-debug.log
+livestatus-debug.log
+bulk-debug.log
+party-family-debug.log
+reset-debug.log
+roster-debug.log
+user-marks.log
+capture-health.log
+boss-kills.log
+session-summary.log
+startup.log
+

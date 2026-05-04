@@ -20,6 +20,12 @@
   latest release from https://github.com/mkaring/ConfuserEx/releases and
   point this at the extracted Confuser.CLI.exe.
 
+.PARAMETER MsBuild
+  Path to MSBuild.exe (used to build the C++ engine .vcxproj).
+  VS 2026 Community ships at C:\Program Files\Microsoft Visual Studio\18\
+  Community\MSBuild\Current\Bin\MSBuild.exe — adjust if you have a
+  different VS edition.
+
 .PARAMETER SkipObfuscation
   Skip the obfuscation step — useful for dry-run packaging tests before
   a real release. The output will be the same as a vanilla publish.
@@ -31,13 +37,29 @@
 #>
 param(
     [string]$ConfuserCli = "C:\Tools\ConfuserEx\Confuser.CLI.exe",
+    [string]$MsBuild = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe",
     [switch]$SkipObfuscation
 )
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = $PSScriptRoot
 $appProj = Join-Path $repoRoot "Aion2FunDps.App\Aion2FunDps.App.csproj"
+$enginePrj = Join-Path $repoRoot "Aion2FunDps.Engine\Aion2FunDps.Engine.vcxproj"
 
+Write-Host "==> Stage 0: Build native engine (C++ DLL)" -ForegroundColor Cyan
+# The dotnet publish stage below copies Aion2FunDps.Engine.dll alongside
+# the .NET output via App.csproj's <None> include. That copy is
+# conditioned on the DLL existing, so we must build the .vcxproj FIRST
+# in matching Release|x64 config — otherwise the publish silently skips
+# the copy and the resulting bundle has no native engine.
+if (-not (Test-Path $MsBuild)) {
+    throw "MSBuild not found at: $MsBuild`n" +
+          "Pass -MsBuild <path> if your VS install lives elsewhere."
+}
+& $MsBuild $enginePrj /p:Configuration=Release /p:Platform=x64 /m /v:minimal | Out-Host
+if ($LASTEXITCODE -ne 0) { throw "Native engine build failed (exit $LASTEXITCODE)" }
+
+Write-Host ""
 Write-Host "==> Stage 1: dotnet publish (multi-file Release)" -ForegroundColor Cyan
 & dotnet publish $appProj `
     -c Release `

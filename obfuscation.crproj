@@ -61,6 +61,19 @@
         <rule pattern="namespace('Aion2FunDps.Core.Models')" inherit="false">
             <protection id="rename" action="remove" />
         </rule>
+        <!-- NativeEngine: P/Invoke surface to Aion2FunDps.Engine.dll. The
+             [DllImport] entry-point names MUST match symbols exported by
+             the native DLL (Aion2Fun_Dispatcher_Create etc.); renaming
+             would silently break the linkage at first call. Sequential
+             struct layouts crossing the FFI boundary also depend on
+             field order being preserved, which rename normally is, but
+             excluding the whole namespace keeps the layout/Cdecl seams
+             out of harm's way. ctrl-flow on these methods is also
+             pointless — they're all `extern static`, no method body to
+             obfuscate. -->
+        <rule pattern="namespace('Aion2FunDps.Protocol.NativeEngine')" inherit="false">
+            <protection id="rename" action="remove" />
+        </rule>
     </module>
 
     <module path="bin\Release\net10.0\Aion2FunDps.Capture.dll">

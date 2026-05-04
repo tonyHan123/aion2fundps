@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aion2FunDps.Capture\Aion2FunDps.Capture.csproj" />
+    <ProjectReference Include="..\Aion2FunDps.Protocol\Aion2FunDps.Protocol.csproj" />
+    <ProjectReference Include="..\Aion2FunDps.Core\Aion2FunDps.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <!-- Copy the C++ engine DLL next to the .NET exe so DllImport can
+       find Aion2FunDps.Engine via the standard Win32 search order.
+       Phase 7 only — once the native engine ships from the App project,
+       App.csproj will own this copy step. -->
+  <ItemGroup>
+    <None Include="..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.dll"
+          Condition="Exists('..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.dll')">
+      <Link>Aion2FunDps.Engine.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

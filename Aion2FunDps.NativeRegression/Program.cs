@@ -18,6 +18,7 @@
 
 using Aion2FunDps.Capture;
 using Aion2FunDps.Core;
+using Aion2FunDps.Core.Models;
 using Aion2FunDps.Protocol;
 using Aion2FunDps.Protocol.NativeEngine;
 
@@ -99,21 +100,56 @@ foreach (var t in allTypes)
 }
 Console.WriteLine();
 
-// First N divergences by record-equality. Records' Equals walks all init
-// properties; we get strong field-level checking for free.
+// First N divergences. Most records' default Equals walks all init
+// properties giving us field-level checking for free, but
+// PartyRosterUpdate.Members is an IReadOnlyList<NicknameInfo> whose
+// Equals is reference-only — two equivalent rosters from different
+// dispatchers always compare unequal. Use a deep-equality wrapper that
+// does element-wise comparison for that one type.
+static bool EventsEqual(IGameEvent a, IGameEvent b)
+{
+    if (a is PartyRosterUpdate ra && b is PartyRosterUpdate rb)
+    {
+        if (ra.GroupId != rb.GroupId) return false;
+        if (ra.TimestampTicks != rb.TimestampTicks) return false;
+        if (ra.SourceIpv4 != rb.SourceIpv4) return false;
+        if (ra.Confidence != rb.Confidence) return false;
+        if (ra.ContainsSelf != rb.ContainsSelf) return false;
+        if (ra.Members.Count != rb.Members.Count) return false;
+        for (int i = 0; i < ra.Members.Count; i++)
+        {
+            if (!ra.Members[i].Equals(rb.Members[i])) return false;
+        }
+        return true;
+    }
+    return a.Equals(b);
+}
+
 const int MaxDivergences = 20;
 int divergences = 0;
 int aligned = Math.Min(managedEvents.Count, nativeEvents.Count);
 Console.WriteLine($"=== Divergences (first {MaxDivergences}) ===");
 for (int i = 0; i < aligned && divergences < MaxDivergences; i++)
 {
-    if (!managedEvents[i].Equals(nativeEvents[i]))
+    if (!EventsEqual(managedEvents[i], nativeEvents[i]))
     {
         divergences++;
         Console.WriteLine($"[{i}]");
-        Console.WriteLine($"  managed: {managedEvents[i]}");
-        Console.WriteLine($"  native:  {nativeEvents[i]}");
+        Console.WriteLine($"  managed: {Describe(managedEvents[i])}");
+        Console.WriteLine($"  native:  {Describe(nativeEvents[i])}");
     }
+}
+
+// Render PartyRosterUpdate with member nicknames inline so divergences
+// surface the actual content difference, not just "...List..."
+static string Describe(IGameEvent ev)
+{
+    if (ev is PartyRosterUpdate r)
+    {
+        var nicks = string.Join(",", r.Members.Select(m => $"{m.UserId}:{m.Nickname}"));
+        return $"PartyRosterUpdate {{ GroupId={r.GroupId}, Confidence={r.Confidence}, ContainsSelf={r.ContainsSelf}, Members=[{nicks}], TimestampTicks={r.TimestampTicks}, SourceIpv4={r.SourceIpv4} }}";
+    }
+    return ev.ToString() ?? "<null>";
 }
 if (managedEvents.Count != nativeEvents.Count)
 {

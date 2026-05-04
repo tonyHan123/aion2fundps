@@ -20,6 +20,18 @@
     <Product>aion2fundps</Product>
     <Company>tonyHan123</Company>
     <Copyright>© 2026 tonyHan123 — MIT License</Copyright>
+    <!-- IncludeNativeLibrariesForSelfExtract is left at the default
+         (true) because IncludeAllContentForSelfExtract=true (set in
+         build-release.ps1 stage 3) requires the native flag to also
+         be true — .NET SDK error NETSDK1143 enforces the pairing.
+         Net effect: Aion2FunDps.Engine.dll is bundled inside the
+         single-file .exe and extracted to a per-user temp dir on
+         first launch via the .NET single-file extraction mechanism.
+         The Win32 LoadLibrary search order then finds it from there.
+         If antivirus false-positives on the temp-extracted DLL
+         become a real distribution issue post-alpha, we can revisit
+         by dropping IncludeAllContentForSelfExtract and shipping
+         Asset/Data as loose dirs in a zip alongside the .exe + .dll. -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -54,23 +66,31 @@
 
   <!-- Native engine DLL deployment. The C++ project Aion2FunDps.Engine.vcxproj
        builds Aion2FunDps.Engine.dll separately (msbuild on the .vcxproj);
-       this <None> include copies it next to Aion2FunDps.App.exe so the
+       this Content include copies it next to Aion2FunDps.App.exe so the
        P/Invoke layer in NativeEngineDispatcher can load it via the Win32
        LoadLibrary search order. Conditioned on existence so dotnet build
-       still succeeds before the C++ project has been built once. The .pdb
-       follows for native-side stack traces in mixed managed/native
-       debugging. -->
+       still succeeds before the C++ project has been built once.
+       Why <Content> not <None>: <None> with CopyToOutputDirectory copies
+       to bin/.../net10.0-windows/win-x64/ but NOT into bin/.../publish/,
+       so single-file release builds drop the native DLL silently and
+       fail on first dispatch when UseNativeEngine=true. <Content> +
+       CopyToPublishDirectory routes through both build and publish.
+       The native runtime then extracts it from the self-extracting
+       bundle to the per-app temp dir on first launch (enabled via
+       IncludeAllContentForSelfExtract=true in build-release.ps1). -->
   <ItemGroup>
-    <None Include="..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.dll"
-          Condition="Exists('..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.dll')">
+    <Content Include="..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.dll"
+             Condition="Exists('..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.dll')">
       <Link>Aion2FunDps.Engine.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.pdb"
-          Condition="Exists('..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.pdb')">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.pdb"
+             Condition="Exists('..\Aion2FunDps.Engine\bin\$(Configuration)\Aion2FunDps.Engine.pdb')">
       <Link>Aion2FunDps.Engine.pdb</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

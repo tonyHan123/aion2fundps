@@ -33,7 +33,7 @@ namespace Aion2FunDps.Protocol.NativeEngine;
 /// serialize Dispatch() calls. Native callbacks fire on the calling
 /// thread, so the emit callback executes inline.
 /// </summary>
-public sealed class NativeEngineDispatcher : IDisposable
+public sealed class NativeEngineDispatcher : IDisposable, IDispatcherTelemetry
 {
     private IntPtr _handle;
     private readonly Action<IGameEvent> _emit;
@@ -205,6 +205,17 @@ public sealed class NativeEngineDispatcher : IDisposable
     public long MalformedCount  => _handle != IntPtr.Zero ? NEI.Aion2Fun_Dispatcher_MalformedCount(_handle)  : 0;
     public long Lz4SuccessCount => _handle != IntPtr.Zero ? NEI.Aion2Fun_Dispatcher_Lz4SuccessCount(_handle) : 0;
     public long Lz4FailureCount => _handle != IntPtr.Zero ? NEI.Aion2Fun_Dispatcher_Lz4FailureCount(_handle) : 0;
+
+    // Telemetry surfaces not (yet) tracked natively — see IDispatcherTelemetry
+    // doc for rationale. UI debug texts that read these will show 0/empty in
+    // native mode; this is intentional and documented.
+    public long UnknownCount => 0;
+    public IReadOnlyDictionary<ushort, long> UnknownByOpcode { get; } =
+        new Dictionary<ushort, long>();
+    public long SelfNickSeen    => 0;
+    public long SelfNickParsed  => 0;
+    public long OtherNickSeen   => 0;
+    public long OtherNickParsed => 0;
 
     /// <summary>
     /// Marshals a `(IntPtr ptr, int len)` pair pointing at UTF-8 bytes

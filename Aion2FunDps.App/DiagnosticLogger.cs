@@ -19,7 +19,7 @@ namespace Aion2FunDps.App;
 public sealed class DiagnosticLogger
 {
     private readonly DpsAggregator _aggregator;
-    private readonly PacketDispatcher _dispatcher;
+    private readonly IDispatcherTelemetry _dispatcher;
     private readonly NpcapAdapter _capture;
     private readonly FrameAssembler _assembler;
     private readonly MobDatabase _mobDb;
@@ -31,7 +31,7 @@ public sealed class DiagnosticLogger
 
     public DiagnosticLogger(
         DpsAggregator aggregator,
-        PacketDispatcher dispatcher,
+        IDispatcherTelemetry dispatcher,
         NpcapAdapter capture,
         FrameAssembler assembler,
         MobDatabase mobDb,

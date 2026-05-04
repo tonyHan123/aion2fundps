@@ -21,7 +21,7 @@ public partial class MainViewModel : ObservableObject
     public DpsAggregator Aggregator => _aggregator;
     private readonly NpcapAdapter _capture;
     private readonly FrameAssembler _assembler;
-    private readonly PacketDispatcher _dispatcher;
+    private readonly IDispatcherTelemetry _dispatcher;
     private readonly SkillDatabase _skillDb;
     private readonly MobDatabase _mobDb;
     private readonly DispatcherTimer _refreshTimer;
@@ -67,7 +67,7 @@ public partial class MainViewModel : ObservableObject
         DpsAggregator aggregator,
         NpcapAdapter capture,
         FrameAssembler assembler,
-        PacketDispatcher dispatcher,
+        IDispatcherTelemetry dispatcher,
         SkillDatabase skillDb,
         MobDatabase mobDb)
     {

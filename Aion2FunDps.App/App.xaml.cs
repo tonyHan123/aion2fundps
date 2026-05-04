@@ -4,6 +4,7 @@ using System.Windows;
 using Aion2FunDps.Capture;
 using Aion2FunDps.Core;
 using Aion2FunDps.Protocol;
+using Aion2FunDps.Protocol.NativeEngine;
 using Aion2FunDps.Storage.Databases;
 using Aion2FunDps.UI.ViewModels;
 
@@ -11,7 +12,18 @@ namespace Aion2FunDps.App;
 
 public partial class App : Application
 {
+    // Phase 6 feature flag: switch the parsing engine from the managed
+    // PacketDispatcher to the native C++ DLL adapter. Off by default while
+    // the native path is under regression validation (Phase 7) — flip to
+    // `true` to exercise the native engine end-to-end on a live capture.
+    // Once Phase 7 confirms equivalent output the default flips to true
+    // and managed becomes the fallback. `static readonly` (not `const`)
+    // so flipping it for testing doesn't trigger CS0162 unreachable-code
+    // warnings on the dead branch — JIT still folds it.
+    private static readonly bool UseNativeEngine = false;
+
     private NpcapAdapter? _capture;
+    private NativeEngineDispatcher? _nativeDispatcher;  // disposed on shutdown
     private CancellationTokenSource? _cts;
     // Held as a field, not a local — Timer would be eligible for GC the moment
     // OnStartup returns, leaving the heartbeat dead silently (saw this on the
@@ -139,37 +151,67 @@ public partial class App : Application
             // cost on the capture hot path. Release builds get zero diagnostic
             // I/O; user-facing logs (boss-kills, session-summary) and small
             // periodic logs (capture-health, startup) stay on.
-            var dispatcher = new PacketDispatcher();
-#if DEBUG
-            // Session header for user-marks.log so log lines from one session
-            // are visually separated from the next when grepping after a bug
-            // report. Other debug logs grow in-place per session — without a
-            // boundary marker the user can't tell which MARK # belongs to
-            // which run.
-            try
-            {
-                File.AppendAllText(
-                    Path.Combine(AppContext.BaseDirectory, "user-marks.log"),
-                    $"=== {DateTime.Now:yyyy-MM-dd HH:mm:ss} session start ===\n");
-            }
-            catch { }
+            // Phase 6: build either the managed dispatcher or the native
+            // C++ engine adapter based on UseNativeEngine. `telemetry` is
+            // the counter surface that DiagnosticLogger / MainViewModel
+            // read; `dispatchPacket` is the hot-path callback assembled
+            // by FrameAssembler.Feed. We bind emit at this seam so the
+            // capture pipeline doesn't care which engine is wired up.
+            IDispatcherTelemetry telemetry;
+            Action<GamePacket> dispatchPacket;
+            PacketDispatcher? managedDispatcher = null;
 
-            var profileDebugLogPath = Path.Combine(AppContext.BaseDirectory, "profile-debug.log");
-            try
+            // Forward declaration: aggregator is constructed below; the
+            // capture lambda needs its OnEvent. We assign emit after
+            // aggregator is built.
+            Action<IGameEvent>? onEventBound = null;
+            void Emit(IGameEvent ev) => onEventBound!(ev);
+
+            if (UseNativeEngine)
             {
-                File.AppendAllText(profileDebugLogPath, $"=== {DateTime.Now:HH:mm:ss.fff} profile logger armed\n");
+                _nativeDispatcher = new NativeEngineDispatcher(Emit);
+                telemetry = _nativeDispatcher;
+                var native = _nativeDispatcher;
+                dispatchPacket = gp => { native.Dispatch(gp); gp.Dispose(); };
             }
-            catch { }
-            dispatcher.DiagnosticLogPath = Path.Combine(AppContext.BaseDirectory, "nick-debug.log");
-            dispatcher.UnknownSnifferLogPath = Path.Combine(AppContext.BaseDirectory, "mobspawn-debug.log");
-            dispatcher.EncounterAnnounceLogPath = Path.Combine(AppContext.BaseDirectory, "encounter-debug.log");
-            dispatcher.ProfileDebugLogPath = profileDebugLogPath;
-            dispatcher.SummonSpawnLogPath = Path.Combine(AppContext.BaseDirectory, "summon-spawn-debug.log");
-            dispatcher.PartyAssemblyLogPath = Path.Combine(AppContext.BaseDirectory, "party-assembly-debug.log");
-            dispatcher.LiveStatusLogPath = Path.Combine(AppContext.BaseDirectory, "livestatus-debug.log");
-            dispatcher.BulkInfoLogPath = Path.Combine(AppContext.BaseDirectory, "bulk-debug.log");
-            dispatcher.PartyFamilyLogPath = Path.Combine(AppContext.BaseDirectory, "party-family-debug.log");
+            else
+            {
+                managedDispatcher = new PacketDispatcher();
+                telemetry = managedDispatcher;
+                var d = managedDispatcher;
+                dispatchPacket = gp => { d.Dispatch(gp, Emit); gp.Dispose(); };
+
+#if DEBUG
+                // Session header for user-marks.log so log lines from one session
+                // are visually separated from the next when grepping after a bug
+                // report. Other debug logs grow in-place per session — without a
+                // boundary marker the user can't tell which MARK # belongs to
+                // which run.
+                try
+                {
+                    File.AppendAllText(
+                        Path.Combine(AppContext.BaseDirectory, "user-marks.log"),
+                        $"=== {DateTime.Now:yyyy-MM-dd HH:mm:ss} session start ===\n");
+                }
+                catch { }
+
+                var profileDebugLogPath = Path.Combine(AppContext.BaseDirectory, "profile-debug.log");
+                try
+                {
+                    File.AppendAllText(profileDebugLogPath, $"=== {DateTime.Now:HH:mm:ss.fff} profile logger armed\n");
+                }
+                catch { }
+                managedDispatcher.DiagnosticLogPath = Path.Combine(AppContext.BaseDirectory, "nick-debug.log");
+                managedDispatcher.UnknownSnifferLogPath = Path.Combine(AppContext.BaseDirectory, "mobspawn-debug.log");
+                managedDispatcher.EncounterAnnounceLogPath = Path.Combine(AppContext.BaseDirectory, "encounter-debug.log");
+                managedDispatcher.ProfileDebugLogPath = profileDebugLogPath;
+                managedDispatcher.SummonSpawnLogPath = Path.Combine(AppContext.BaseDirectory, "summon-spawn-debug.log");
+                managedDispatcher.PartyAssemblyLogPath = Path.Combine(AppContext.BaseDirectory, "party-assembly-debug.log");
+                managedDispatcher.LiveStatusLogPath = Path.Combine(AppContext.BaseDirectory, "livestatus-debug.log");
+                managedDispatcher.BulkInfoLogPath = Path.Combine(AppContext.BaseDirectory, "bulk-debug.log");
+                managedDispatcher.PartyFamilyLogPath = Path.Combine(AppContext.BaseDirectory, "party-family-debug.log");
 #endif
+            }
             var aggregator = new DpsAggregator
             {
                 DungeonDb = dungeonDb,
@@ -204,6 +246,10 @@ public partial class App : Application
                 return null;
             };
 
+            // Now that aggregator exists, bind the emit target the
+            // dispatchPacket lambda was constructed against.
+            onEventBound = aggregator.OnEvent;
+
             _cts = new CancellationTokenSource();
             _ = Task.Run(async () =>
             {
@@ -211,9 +257,7 @@ public partial class App : Application
                 {
                     Log("capture task: start");
                     _capture.Start();
-                    Action<IGameEvent> onEvent = aggregator.OnEvent;
-                    Action<GamePacket> onGamePacket = gp => { dispatcher.Dispatch(gp, onEvent); gp.Dispose(); };
-                    Action<OrderedChunk> onOrderedChunk = chunk => assembler.Feed(chunk, onGamePacket);
+                    Action<OrderedChunk> onOrderedChunk = chunk => assembler.Feed(chunk, dispatchPacket);
 
                     await foreach (var rawPacket in _capture.Reader.ReadAllAsync(_cts.Token))
                         reorderer.Feed(rawPacket, onOrderedChunk);
@@ -223,8 +267,8 @@ public partial class App : Application
                 catch (Exception ex) { Log($"capture task: ERROR {ex}"); }
             });
 
-            Log("Wiring DiagnosticLogger (boss-kills.log + session-summary.log)");
-            _ = new DiagnosticLogger(aggregator, dispatcher, _capture, assembler, mobDb, skillDb);
+            Log($"Wiring DiagnosticLogger (engine={(UseNativeEngine ? "native" : "managed")})");
+            _ = new DiagnosticLogger(aggregator, telemetry, _capture, assembler, mobDb, skillDb);
 
             // Periodic capture-health heartbeat — writes to capture-health.log so
             // we can correlate "lobby joins missed at HH:MM" with kernel/channel
@@ -252,7 +296,7 @@ public partial class App : Application
             }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
             Log("Creating MainViewModel");
-            var vm = new MainViewModel(aggregator, _capture, assembler, dispatcher, skillDb, mobDb);
+            var vm = new MainViewModel(aggregator, _capture, assembler, telemetry, skillDb, mobDb);
 
             Log("Creating MainWindow");
             var window = new MainWindow { DataContext = vm };
@@ -366,6 +410,7 @@ public partial class App : Application
         _foregroundWatcher?.Stop();
         _cts?.Cancel();
         _capture?.Dispose();
+        _nativeDispatcher?.Dispose();
         base.OnExit(e);
         // Force-terminate the host process. The capture task reads from a
         // bounded channel via ReadAllAsync(token) — token cancellation doesn't

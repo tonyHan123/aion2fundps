@@ -1,4 +1,6 @@
+using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 namespace Aion2FunDps.Core.Repositories;
 
@@ -16,12 +18,19 @@ namespace Aion2FunDps.Core.Repositories;
 /// Cap exists to bound memory in long sessions (4+ hours in busy zones)
 /// where the registries would otherwise accumulate tens of thousands of
 /// stale ids — see project_release_prep_optimization.md item 3.
+///
+/// Pin/Unpin: keys can be marked as un-evictable. The eviction loop
+/// re-enqueues pinned keys instead of dropping them, so they stay in the
+/// dict regardless of how many fresh inserts pile up. Used by
+/// NicknameRegistry to prevent the user's own canonical entry from being
+/// dropped during long sessions in busy zones.
 /// </summary>
-public sealed class BoundedConcurrentDictionary<TKey, TValue>
+public sealed class BoundedConcurrentDictionary<TKey, TValue> : IEnumerable<KeyValuePair<TKey, TValue>>
     where TKey : notnull
 {
     private readonly int _capacity;
-    private readonly ConcurrentDictionary<TKey, TValue> _dict = new();
+    private readonly ConcurrentDictionary<TKey, TValue> _dict;
+    private readonly ConcurrentDictionary<TKey, byte> _pinned;
     private readonly ConcurrentQueue<TKey> _insertionOrder = new();
     /// <summary>
     /// Approx count of unique inserts queued for FIFO eviction. Drifts
@@ -32,11 +41,20 @@ public sealed class BoundedConcurrentDictionary<TKey, TValue>
     /// </summary>
     private int _orderSize;
 
-    public BoundedConcurrentDictionary(int capacity)
+    public BoundedConcurrentDictionary(int capacity, IEqualityComparer<TKey>? comparer = null)
     {
         if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
         _capacity = capacity;
+        _dict   = comparer is null ? new ConcurrentDictionary<TKey, TValue>() : new ConcurrentDictionary<TKey, TValue>(comparer);
+        _pinned = comparer is null ? new ConcurrentDictionary<TKey, byte>()   : new ConcurrentDictionary<TKey, byte>(comparer);
     }
+
+    /// <summary>Mark a key as un-evictable. Idempotent — safe to call repeatedly.</summary>
+    public void Pin(TKey key) => _pinned[key] = 0;
+
+    /// <summary>Remove the un-evictable mark. The key is then subject to FIFO
+    /// eviction like any other.</summary>
+    public void Unpin(TKey key) => _pinned.TryRemove(key, out _);
 
     public TValue this[TKey key]
     {
@@ -57,14 +75,27 @@ public sealed class BoundedConcurrentDictionary<TKey, TValue>
         if (newSize <= _capacity) return;
 
         int batch = Math.Max(1, _capacity / 10);
-        for (int i = 0; i < batch; i++)
+        int evicted = 0;
+        // Loop until we've evicted `batch` non-pinned keys or the queue
+        // empties. Pinned keys (e.g., the user's own canonical) are
+        // re-enqueued so they continue rotating through the queue without
+        // being dropped from the dict.
+        int safety = batch * 4;  // bound the worst case when most keys are pinned
+        while (evicted < batch && safety-- > 0
+               && _insertionOrder.TryDequeue(out var oldKey))
         {
-            if (!_insertionOrder.TryDequeue(out var oldKey)) break;
             Interlocked.Decrement(ref _orderSize);
+            if (_pinned.ContainsKey(oldKey))
+            {
+                _insertionOrder.Enqueue(oldKey);
+                Interlocked.Increment(ref _orderSize);
+                continue;
+            }
             // Race: oldKey may have been re-inserted (and re-enqueued).
             // We just drop it — the next enqueue will keep it alive.
             // This is the "drift" mentioned in _orderSize's doc.
             _dict.TryRemove(oldKey, out _);
+            evicted++;
         }
     }
 
@@ -77,4 +108,7 @@ public sealed class BoundedConcurrentDictionary<TKey, TValue>
         _dict.TryRemove(key, out value!);
 
     public int Count => _dict.Count;
+
+    public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() => _dict.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

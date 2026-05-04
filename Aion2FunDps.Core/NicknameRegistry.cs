@@ -21,13 +21,21 @@ namespace Aion2FunDps.Core;
 /// </summary>
 public sealed class NicknameRegistry
 {
-    /// <summary>Canonical entity_id → entry (one per nickname).</summary>
-    private readonly ConcurrentDictionary<int, NicknameEntry> _entries = new();
-    /// <summary>Nickname → canonical entity_id. ConcurrentDictionary so the UI
-    /// thread's <c>GetEntry</c>/<c>GetName</c> reads can race the capture
-    /// thread's writes safely — the prior plain Dictionary corrupted its
-    /// bucket array under sustained party traffic + 500ms UI ticks.</summary>
-    private readonly ConcurrentDictionary<string, int> _nicknameToCanonical = new(StringComparer.Ordinal);
+    /// <summary>Canonical entity_id → entry (one per nickname). Bounded at
+    /// 10k entries with FIFO eviction so long sessions in busy zones (where
+    /// thousands of unique characters drift past) don't grow this without
+    /// bound. Self's canonical is Pin()ned once identified so the user's
+    /// own row is never evicted, even if 10k+ other nicknames stream in
+    /// over hours of city loitering.</summary>
+    private readonly BoundedConcurrentDictionary<int, NicknameEntry> _entries = new(10_000);
+    /// <summary>Nickname → canonical entity_id. Bounded the same way as
+    /// <see cref="_entries"/>. Self's nickname is Pin()ned alongside the
+    /// canonical entry so the reverse lookup also survives eviction
+    /// pressure. Drift between the two dicts under the cap is benign:
+    /// a stale nickname-only entry resolves to a missing canonical and
+    /// the next Register call re-establishes both atomically.</summary>
+    private readonly BoundedConcurrentDictionary<string, int> _nicknameToCanonical
+        = new(10_000, StringComparer.Ordinal);
     /// <summary>Any entity_id → canonical entity_id. Includes self-loops for canonicals.
     /// ConcurrentDictionary for the same reason as <see cref="_nicknameToCanonical"/>.
     /// Bounded with FIFO eviction at 10k entries — this is the fastest-growing
@@ -152,6 +160,7 @@ public sealed class NicknameRegistry
         {
             SelfUserId = canonical;
             if (!string.IsNullOrWhiteSpace(nickname)) SelfNickname = nickname;
+            PinSelf(canonical, nickname);
             // SELF_NICK's "server" field carries a region/account code, not
             // the lobby shard id we need for the suffix. Don't assign
             // SelfServerId from the IsSelf path — fall through to the
@@ -167,9 +176,23 @@ public sealed class NicknameRegistry
             // EvictStaleMembers / UI / etc. can identify self consistently.
             SelfUserId ??= canonical;
             if (server > 0) SelfServerId = server;
+            PinSelf(canonical, nickname);
         }
 
         return canonical;
+    }
+
+    /// <summary>Pin self's canonical entry + nickname so the bounded dicts
+    /// never evict them under FIFO pressure. Called every time we identify
+    /// (or re-identify) self — Pin is idempotent so repeated calls are free,
+    /// and we always pin the latest known canonical/nickname even if either
+    /// changes mid-session.</summary>
+    private void PinSelf(int canonical, string? nickname)
+    {
+        _entries.Pin(canonical);
+        _aliases.Pin(canonical);
+        if (!string.IsNullOrEmpty(nickname))
+            _nicknameToCanonical.Pin(nickname);
     }
 
     /// <summary>
@@ -272,7 +295,10 @@ public sealed class NicknameRegistry
             // _partyMembers during sparse-broadcast windows (private room,
             // host idle for >60s) and "내 닉네임은 안뜨는데?" reproduces.
             if (_nicknameToCanonical.TryGetValue(winner, out var canonicalForSelf))
+            {
                 SelfUserId = canonicalForSelf;
+                PinSelf(canonicalForSelf, winner);
+            }
             foreach (var kv in _entries)
             {
                 if (kv.Value.Server > 0

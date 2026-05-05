@@ -328,6 +328,12 @@ public sealed class DpsAggregator
         // doesn't mutate roster state.
         SweepLiveStatusPhantoms();
 
+        // Cumulative mode (AutoResetOnBoss=false): user opted out of
+        // every automatic reset, including time-based stale eviction.
+        // Preserving rows past 60s of silence matches their intent —
+        // damage from earlier bosses stays on display until they Ctrl+R.
+        if (!AutoResetOnBoss) return;
+
         // In any matchmaking room (lobby or dungeon-from-room): the state
         // machine owns membership. Don't second-guess it with time-based
         // eviction.
@@ -1137,6 +1143,20 @@ public sealed class DpsAggregator
     /// </summary>
     private void WipeMembership()
     {
+        // Cumulative mode (AutoResetOnBoss=false) is the user explicitly
+        // opting out of every automatic reset. Wiping PlayerStats rows
+        // between bosses — which is what Current.Remove does — erases
+        // accumulated damage and breaks the cumulative contract.
+        // ROOM_CHANGE / KICKED / coldNewRoom / COLDSTART_KICKED all flow
+        // through here, so a single guard covers them all. _partyMembers
+        // also stays put so OurCrew keeps showing past members; new ones
+        // get added as their damage events land in the existing
+        // damage-handler add path.
+        // 사용자 보고 2026-05-05: "1보스 잡고 2보스 넘어갈 때 초기화"
+        // — same dungeon, same room, but a roster packet variation tripped
+        // ROOM_CHANGE → WipeMembership →누적 사라짐.
+        if (!AutoResetOnBoss) return;
+
         foreach (var oldId in _partyMembers.ToList())
             Current.Remove(oldId);
         _partyMembers.Clear();

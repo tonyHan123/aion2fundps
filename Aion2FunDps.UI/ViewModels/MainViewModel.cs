@@ -212,11 +212,21 @@ public partial class MainViewModel : ObservableObject
         // Cleared automatically by ResetCore on NewBossDetected → boss N+1.
         // Reuse the bossSnap from earlier for coherent reads — avoid another
         // round of separate _aggregator.* property accesses that could race.
+        //
+        // AutoResetOnBoss=false (cumulative mode): the user has explicitly
+        // opted out of per-boss reset, so the per-boss Damage column would
+        // make the leaderboard "drop to 0" each time focus shifts to a new
+        // boss — directly contradicting the cumulative contract (사용자 보고
+        // 2026-05-06: "보스1 잡고 2 잡는데 초기화되는데 다잡고나니깐 그때서야
+        // 합산되고 보스3 때리니깐 초기화"). In cumulative mode, always show
+        // session totals — the user wants damage to keep climbing across
+        // every boss in the dungeon.
         int? bossTargetId = bossSnap.LastKilledBossId
             ?? (bossSnap.IsBossMode ? bossSnap.FocusedEntityId : null);
+        bool useTargetedDamage = bossTargetId.HasValue && _aggregator.AutoResetOnBoss;
         var crew = _aggregator.OurCrew()
-            .Select(p => bossTargetId.HasValue
-                ? (Player: p, Damage: p.GetDamageToTarget(bossTargetId.Value), Dps: p.GetDpsToTarget(bossTargetId.Value))
+            .Select(p => useTargetedDamage
+                ? (Player: p, Damage: p.GetDamageToTarget(bossTargetId!.Value), Dps: p.GetDpsToTarget(bossTargetId.Value))
                 : (Player: p, Damage: p.TotalDamage, Dps: p.Dps))
             .OrderByDescending(row => row.Damage)
             .Take(10)

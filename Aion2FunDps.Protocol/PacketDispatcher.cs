@@ -99,6 +99,25 @@ public sealed class PacketDispatcher : IDispatcherTelemetry
     /// 보내는 듯).</summary>
     public string? PartyFamilyLogPath { get; set; }
 
+    /// <summary>
+    /// Wire-level RE diagnostic — dumps EVERY frame whose payload contains
+    /// 4+ consecutive Hangul UTF-8 chars (3-byte sequences EA-ED 80-BF 80-BF),
+    /// regardless of opcode and regardless of whether the existing handlers
+    /// recognized it. This is the "find the missing nickname" tool: when a
+    /// user reports "X 들어왔는데 미터에 안 떴다" and X doesn't appear in any
+    /// of the per-opcode debug logs, X's UTF-8 byte pattern can still be
+    /// grepped out of THIS file to identify which opcode delivered it.
+    /// Sample: <code>grep "eb 98 b8 ec 9e 90 eb b9 84" nickname-sweep-debug.log</code>
+    ///
+    /// No per-opcode cap — long sessions need full coverage for users
+    /// reporting late-session join misses (사용자 보고 2026-05-05: 호자비
+    /// [페르] / 김수녕[이슈] / 네스티프[루드] 들어옴 후 점점 새 멤버 누락).
+    /// Capacity overhead is bounded because the LooksLikeNickname check
+    /// short-circuits on the first 256 bytes and most non-roster traffic
+    /// (damage, mob HP, etc.) doesn't carry consecutive Hangul.
+    /// </summary>
+    public string? NicknameSweepLogPath { get; set; }
+
     private static string ToHex(ReadOnlySpan<byte> bytes) =>
         string.Join(" ", bytes.ToArray().Select(b => b.ToString("x2")));
 
@@ -352,6 +371,39 @@ public sealed class PacketDispatcher : IDispatcherTelemetry
         });
     }
 
+    /// <summary>
+    /// Wire-level RE helper: returns true if the body contains 4+ consecutive
+    /// Hangul UTF-8 chars (3-byte sequences EA-ED 80-BF 80-BF) within the
+    /// first 256 bytes. Cheap byte scan — no allocation, no Encoding decode.
+    /// Used to gate the NicknameSweepLogPath dump so we don't fill disk with
+    /// damage/HP traffic that has no nickname in it.
+    /// </summary>
+    private static bool LooksLikeNicknamePayload(ReadOnlySpan<byte> body)
+    {
+        int max = 0;
+        int run = 0;
+        int len = Math.Min(body.Length, 256);
+        for (int i = 0; i + 2 < len; )
+        {
+            byte b = body[i];
+            if (b >= 0xEA && b <= 0xED
+                && body[i + 1] >= 0x80 && body[i + 1] <= 0xBF
+                && body[i + 2] >= 0x80 && body[i + 2] <= 0xBF)
+            {
+                run++;
+                if (run > max) max = run;
+                if (max >= 4) return true;
+                i += 3;
+            }
+            else
+            {
+                run = 0;
+                i++;
+            }
+        }
+        return false;
+    }
+
     private void DispatchOpcode(ReadOnlySpan<byte> body, uint sourceIpv4, long ticks, Action<IGameEvent> emit)
     {
         if (body.Length < 2)
@@ -362,6 +414,27 @@ public sealed class PacketDispatcher : IDispatcherTelemetry
 
         byte op0 = body[0];
         byte op1 = body[1];
+
+        // Wire-level RE: dump every frame whose payload smells like it carries
+        // a nickname, regardless of which opcode handler ends up taking it
+        // (or none at all). Lets the user grep the missing nickname's UTF-8
+        // hex bytes out of this file post-session and see what op delivered
+        // them. Cap absent — see NicknameSweepLogPath xmldoc for rationale.
+        if (NicknameSweepLogPath != null && LooksLikeNicknamePayload(body))
+        {
+            try
+            {
+                var hex = string.Join(" ",
+                    body[..Math.Min(2048, body.Length)].ToArray().Select(b => b.ToString("x2")));
+                string srcIp = $"{(sourceIpv4 >> 24) & 0xFF}.{(sourceIpv4 >> 16) & 0xFF}.{(sourceIpv4 >> 8) & 0xFF}.{sourceIpv4 & 0xFF}";
+                lock (_logLock)
+                {
+                    System.IO.File.AppendAllText(NicknameSweepLogPath,
+                        $"{DateTime.Now:HH:mm:ss.fff} src={srcIp} op={op0:x2}{op1:x2} len={body.Length}: {hex}\n");
+                }
+            }
+            catch { }
+        }
 
         // Diagnostic: catch-all log for the entire party-related opcode family
         // (0x?? 0x97 and 0x?? 0xe2). Fires BEFORE any handler-specific branch

@@ -210,6 +210,7 @@ public partial class App : Application
                 managedDispatcher.LiveStatusLogPath = Path.Combine(AppContext.BaseDirectory, "livestatus-debug.log");
                 managedDispatcher.BulkInfoLogPath = Path.Combine(AppContext.BaseDirectory, "bulk-debug.log");
                 managedDispatcher.PartyFamilyLogPath = Path.Combine(AppContext.BaseDirectory, "party-family-debug.log");
+                managedDispatcher.NicknameSweepLogPath = Path.Combine(AppContext.BaseDirectory, "nickname-sweep-debug.log");
 #endif
             }
             var aggregator = new DpsAggregator

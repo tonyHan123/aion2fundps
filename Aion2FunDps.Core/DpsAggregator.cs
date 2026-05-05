@@ -348,11 +348,16 @@ public sealed class DpsAggregator
         foreach (var (id, lastSeen) in _memberLastSeenUtc)
         {
             if (id == selfId) continue;
-            if (!_partyMembers.Contains(id))
-            {
-                (toEvict ??= new List<int>()).Add(id);
-                continue;
-            }
+            // Stale-only eviction. Earlier code also immediately evicted any
+            // id that wasn't in _partyMembers — meant to keep the two
+            // collections in sync, but in cold-start dungeon entry it nukes
+            // every freshly-touched actor 500ms later because the proxy
+            // self-add path hadn't run yet (사용자 보고 2026-05-06 03:24~03:25:
+            // "보스 때려도 보스 딜기록이 안됨". Log: same raw=5730 hit
+            // produces pre=0 post=151247 followed by pre=0 post=25122 within
+            // 326ms because Current.Remove(5730) wiped its row between them).
+            // Now both gates require the 60s stale threshold; sync drift is
+            // resolved by WipeMembership / state-machine paths instead.
             if (now - lastSeen > StaleMemberThreshold)
                 (toEvict ??= new List<int>()).Add(id);
         }
@@ -709,41 +714,43 @@ public sealed class DpsAggregator
                         _roomTracker.AddLiveMember(actor);
                     }
 
-                    // Cold-start self detection (dungeon-entity-only):
-                    // user starts the meter AFTER entering a dungeon, so
-                    // SELF_NICK never fires for this session. The matchmaking
-                    // roster (op=02 97 lobby) registers the user's lobby
-                    // canonical (e.g. 46569:짭호 in 사용자 보고 2026-05-06) but
-                    // damage in the dungeon flows to a different entity_id
-                    // (5807 in the same report) that has no NicknameRegistry
-                    // entry. The existing party-detection gate above rejects
-                    // such actors, leaving the user staring at a 0-damage
-                    // lobby row while the actual damage piles up on an
-                    // un-displayed dungeon-id row.
+                    // Cold-start self detection. Two flavours:
                     //
-                    // Self proxy heuristic: when SelfUserId is known but the
-                    // self lobby row carries no damage, AND a different
-                    // unregistered actor is hitting the focused boss, adopt
-                    // that dungeon actor as a proxy member. _partyMembers
-                    // surfaces it through OurCrew immediately. Constraints:
-                    //   - Boss-mode + focused-target gate filters out PvP
-                    //     and stray mob damage
-                    //   - Only fires when lobby self has zero damage so
-                    //     established sessions (where OTHER_NICK / SELF_NICK
-                    //     already aliased the dungeon id) don't double-add
-                    //   - Once added, normal accumulation works because the
-                    //     proxy id is now in _partyMembers and OurCrew shows
-                    //     its PlayerStats. Nickname stays "Actor_5807" until
-                    //     OTHER_NICK eventually delivers it.
+                    //   (a) Self lobby canonical exists but its row carries
+                    //       no damage (matchmaking roster ran, dungeon entity
+                    //       id is different and hasn't been aliased yet —
+                    //       사용자 보고 2026-05-06: 짭호=46569 lobby vs 5807
+                    //       dungeon).
+                    //
+                    //   (b) Cold-start mid-dungeon with NO matchmaking
+                    //       packet ever observed: SelfUserId is null,
+                    //       _partyMembers is empty. The very first actor
+                    //       hitting the focused boss is overwhelmingly
+                    //       likely to be the user (사용자 보고 2026-05-06
+                    //       03:24~03:25: "처음 켰을때 파티원 인식 안되고 보스
+                    //       때려도 딜기록 안됨". Logs: raw=5730 boss-targets
+                    //       52706 from t=32.245 onwards but never enters
+                    //       _partyMembers because the previous gate required
+                    //       SelfUserId to be known).
+                    //
+                    // Either flavour: adopt the unregistered boss-targeting
+                    // actor as a proxy. _partyMembers surfaces it through
+                    // OurCrew, EvictStaleMembers no longer wipes it (the
+                    // accompanying fix removed its instant-evict-when-not-
+                    // in-_partyMembers branch), and damage accumulates
+                    // visibly. The boss-mode + focused-target gate keeps
+                    // PvP / stray mob damage out.
                     if (_boss.IsBossMode
                         && _boss.FocusedEntityId == dmg.TargetId
                         && !_partyMembers.Contains(actor)
-                        && _registry.GetEntry(actor) == null
-                        && _registry.SelfUserId is int selfCanonical
-                        && actor != selfCanonical)
+                        && _registry.GetEntry(actor) == null)
                     {
-                        var selfRow = Current.GetExisting(selfCanonical);
-                        if (selfRow == null || selfRow.TotalDamage == 0)
+                        bool flavorA = _registry.SelfUserId is int selfCanonical
+                            && actor != selfCanonical
+                            && (Current.GetExisting(selfCanonical)?.TotalDamage ?? 0) == 0;
+                        bool flavorB = _registry.SelfUserId == null
+                            && _partyMembers.Count == 0;
+                        if (flavorA || flavorB)
                         {
                             _partyMembers.Add(actor);
                             _roomTracker.AddLiveMember(actor);

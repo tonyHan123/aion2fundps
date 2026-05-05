@@ -328,15 +328,13 @@ public sealed class DpsAggregator
         // doesn't mutate roster state.
         SweepLiveStatusPhantoms();
 
-        // Cumulative mode (AutoResetOnBoss=false): user opted out of
-        // every automatic reset, including time-based stale eviction.
-        // Preserving rows past 60s of silence matches their intent —
-        // damage from earlier bosses stays on display until they Ctrl+R.
-        if (!AutoResetOnBoss) return;
-
         // In any matchmaking room (lobby or dungeon-from-room): the state
         // machine owns membership. Don't second-guess it with time-based
-        // eviction.
+        // eviction. The earlier AutoResetOnBoss=false gate (commit
+        // 5658820) was over-eager; eviction only fires AFTER PartyLeft
+        // clears _currentMatchmakingRoom, which is itself an explicit
+        // user-driven transition that should wipe stale state regardless
+        // of cumulative mode.
         if (_currentMatchmakingRoom.HasValue) return;
         if (_memberLastSeenUtc.Count == 0) return;
 
@@ -1184,20 +1182,22 @@ public sealed class DpsAggregator
     /// </summary>
     private void WipeMembership()
     {
-        // Cumulative mode (AutoResetOnBoss=false) is the user explicitly
-        // opting out of every automatic reset. Wiping PlayerStats rows
-        // between bosses — which is what Current.Remove does — erases
-        // accumulated damage and breaks the cumulative contract.
-        // ROOM_CHANGE / KICKED / coldNewRoom / COLDSTART_KICKED all flow
-        // through here, so a single guard covers them all. _partyMembers
-        // also stays put so OurCrew keeps showing past members; new ones
-        // get added as their damage events land in the existing
-        // damage-handler add path.
-        // 사용자 보고 2026-05-05: "1보스 잡고 2보스 넘어갈 때 초기화"
-        // — same dungeon, same room, but a roster packet variation tripped
-        // ROOM_CHANGE → WipeMembership →누적 사라짐.
-        if (!AutoResetOnBoss) return;
-
+        // No AutoResetOnBoss gate here — the function is only called from
+        // explicit user-driven transitions: ROOM_CHANGE (entered a new
+        // matchmaking room), KICKED (server told us we left), coldNewRoom
+        // (first roster after meter start in a new room), and PARTY_LEFT
+        // post-kill check. None of those are "automatic boss-to-boss
+        // resets" that AutoResetOnBoss=false is meant to suppress; they
+        // are the user explicitly leaving / changing rooms, where wiping
+        // the previous roster is exactly what the user expects.
+        //
+        // The earlier OFF guard (commit 5658820) was added to fix a
+        // perceived "boss-to-boss reset" symptom that turned out to be
+        // a UI-side per-target column switch (commit 6afd751). With that
+        // misdiagnosis corrected, the guard's side effect is far worse
+        // than its target: 사용자 보고 2026-05-06 03:08~03:12 — "방을
+        // 새로 팠는데 옛날 방 사람들이 안 없어진다" was caused by the
+        // ROOM_CHANGE branch's WipeMembership being silently no-op'd.
         foreach (var oldId in _partyMembers.ToList())
             Current.Remove(oldId);
         _partyMembers.Clear();

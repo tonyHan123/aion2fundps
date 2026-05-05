@@ -181,6 +181,24 @@ public sealed class PlayerStats
         _frozenDps = seconds < 0.5 ? 0 : TotalDamage / seconds;
     }
 
+    /// <summary>
+    /// Drops the freeze contract on both <see cref="Dps"/> and every
+    /// per-target frozen value. After this call, <see cref="Dps"/> resumes
+    /// the rolling computation against the elapsed-since-first-hit
+    /// denominator and per-target getters use live <c>_targetDps</c>.
+    ///
+    /// Called by <see cref="DpsAggregator"/> when the user toggles
+    /// AutoResetOnBoss=false mid-session — without this the freeze that
+    /// OnBossKilled installed stays put forever (Apply() deliberately
+    /// preserves it across trailing hits, and ResetCore — the natural
+    /// cleanup point — never fires in cumulative mode).
+    /// </summary>
+    public void UnfreezeAllDps()
+    {
+        _frozenDps = null;
+        _frozenTargetDps.Clear();
+    }
+
     public void FreezeDpsToTarget(int targetId)
     {
         if (!_damagePerTarget.TryGetValue(targetId, out var damage) || damage <= 0)

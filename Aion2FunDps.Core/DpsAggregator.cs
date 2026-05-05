@@ -84,7 +84,41 @@ public sealed class DpsAggregator
     public long CombatBoundaryEventCount { get; private set; }
     public long SummonSpawnEventCount { get; private set; }
 
-    public bool AutoResetOnBoss { get; set; } = true;
+    private bool _autoResetOnBoss = true;
+    public bool AutoResetOnBoss
+    {
+        get => _autoResetOnBoss;
+        set
+        {
+            if (_autoResetOnBoss == value) return;
+            _autoResetOnBoss = value;
+
+            // Toggling OFF mid-session leaves the freeze that OnBossKilled
+            // installed on every player's _frozenDps pinned forever:
+            // Apply() deliberately preserves the freeze across trailing
+            // hits (DoTs/multi-hits), and the natural cleanup —
+            // ResetCore on the next NewBossDetected — is gated by
+            // AutoResetOnBoss=true. Without an explicit unfreeze here the
+            // user sees "딜 누적이 안 됨" — actually the stats are
+            // accumulating, but the Dps getter still returns the kill-
+            // moment frozen value. Clear it explicitly when the user
+            // opts out of the freeze contract.
+            //
+            // We also clear LastKilledBossId — it was stamped by the
+            // last OnBossKilled and used by phase-transition guards in
+            // OnNewBossDetected; in cumulative mode those guards are
+            // moot (the function returns early on AutoResetOnBoss=false
+            // anyway), but a stale LastKilledBossId would interfere
+            // with PartyLeft handling at line ~1032 if the user toggles
+            // back to ON later.
+            if (!value)
+            {
+                foreach (var p in Current.AllPlayers)
+                    p.UnfreezeAllDps();
+                LastKilledBossId = null;
+            }
+        }
+    }
 
     /// <summary>Set briefly when an auto-reset just fired — UI can flash a notification.</summary>
     public DateTime? LastAutoResetAt { get; private set; }

@@ -710,6 +710,47 @@ public sealed class DpsAggregator
                         _partyMembers.Add(actor);
                         _roomTracker.AddLiveMember(actor);
                     }
+
+                    // Cold-start self detection (dungeon-entity-only):
+                    // user starts the meter AFTER entering a dungeon, so
+                    // SELF_NICK never fires for this session. The matchmaking
+                    // roster (op=02 97 lobby) registers the user's lobby
+                    // canonical (e.g. 46569:짭호 in 사용자 보고 2026-05-06) but
+                    // damage in the dungeon flows to a different entity_id
+                    // (5807 in the same report) that has no NicknameRegistry
+                    // entry. The existing party-detection gate above rejects
+                    // such actors, leaving the user staring at a 0-damage
+                    // lobby row while the actual damage piles up on an
+                    // un-displayed dungeon-id row.
+                    //
+                    // Self proxy heuristic: when SelfUserId is known but the
+                    // self lobby row carries no damage, AND a different
+                    // unregistered actor is hitting the focused boss, adopt
+                    // that dungeon actor as a proxy member. _partyMembers
+                    // surfaces it through OurCrew immediately. Constraints:
+                    //   - Boss-mode + focused-target gate filters out PvP
+                    //     and stray mob damage
+                    //   - Only fires when lobby self has zero damage so
+                    //     established sessions (where OTHER_NICK / SELF_NICK
+                    //     already aliased the dungeon id) don't double-add
+                    //   - Once added, normal accumulation works because the
+                    //     proxy id is now in _partyMembers and OurCrew shows
+                    //     its PlayerStats. Nickname stays "Actor_5807" until
+                    //     OTHER_NICK eventually delivers it.
+                    if (_boss.IsBossMode
+                        && _boss.FocusedEntityId == dmg.TargetId
+                        && !_partyMembers.Contains(actor)
+                        && _registry.GetEntry(actor) == null
+                        && _registry.SelfUserId is int selfCanonical
+                        && actor != selfCanonical)
+                    {
+                        var selfRow = Current.GetExisting(selfCanonical);
+                        if (selfRow == null || selfRow.TotalDamage == 0)
+                        {
+                            _partyMembers.Add(actor);
+                            _roomTracker.AddLiveMember(actor);
+                        }
+                    }
                 }
                 break;
 

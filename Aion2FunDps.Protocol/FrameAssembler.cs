@@ -15,18 +15,40 @@ namespace Aion2FunDps.Protocol;
 /// </summary>
 public sealed class FrameAssembler
 {
+    private const int MaxFrameBytes = 256 * 1024;
+    private const int MaxCarryoverBytes = 256 * 1024;
+    private const int PruneIntervalFeeds = 4096;
+    private static readonly long IdleFlowTimeoutTicks = TimeSpan.FromMinutes(2).Ticks;
+
     private readonly Dictionary<ulong, Carryover> _carryover = new();
     private long _malformedFrames;
+    private long _droppedCarryovers;
+    private int _feedsSincePrune;
 
     public long MalformedFrames => Volatile.Read(ref _malformedFrames);
+    public long DroppedCarryovers => Volatile.Read(ref _droppedCarryovers);
     public int FlowCount => _carryover.Count;
 
     public void Feed(in OrderedChunk chunk, Action<GamePacket> onGamePacket)
     {
+        if (++_feedsSincePrune >= PruneIntervalFeeds)
+        {
+            _feedsSincePrune = 0;
+            PruneIdleFlows(chunk.TimestampTicks);
+        }
+
         var flowKey = chunk.FlowKey;
 
         Carryover prior = _carryover.GetValueOrDefault(flowKey);
         int combinedLen = prior.Length + chunk.Length;
+        if (combinedLen > MaxCarryoverBytes)
+        {
+            DropPrior(flowKey, prior);
+            ArrayPool<byte>.Shared.Return(chunk.Buffer);
+            Interlocked.Increment(ref _droppedCarryovers);
+            return;
+        }
+
         byte[] combined = ArrayPool<byte>.Shared.Rent(combinedLen);
 
         if (prior.Length > 0)
@@ -43,14 +65,21 @@ public sealed class FrameAssembler
         {
             var span = combined.AsSpan(offset, combinedLen - offset);
             if (!TryReadVarInt(span, out int varIntValue, out int varIntBytes))
+            {
+                if (span.Length >= 5)
+                {
+                    Interlocked.Increment(ref _malformedFrames);
+                    offset = combinedLen;
+                }
                 break;
+            }
 
             // Aion 2 framing: total bytes to consume = varintValue + varintBytes - 4.
             // The "-4" accounts for a 4-byte protocol artifact the spec includes in the
             // size value but excludes from the slice handed to the processor.
             // Source: TK-open-public StreamAssembler.kt — realLength = value + length - 4.
             int realLength = varIntValue + varIntBytes - 4;
-            if (realLength <= varIntBytes)
+            if (realLength <= varIntBytes || realLength > MaxFrameBytes)
             {
                 Interlocked.Increment(ref _malformedFrames);
                 offset = combinedLen;
@@ -71,9 +100,16 @@ public sealed class FrameAssembler
         int remaining = combinedLen - offset;
         if (remaining > 0)
         {
+            if (remaining > MaxCarryoverBytes)
+            {
+                Interlocked.Increment(ref _droppedCarryovers);
+                ArrayPool<byte>.Shared.Return(combined);
+                return;
+            }
+
             byte[] carryBuf = ArrayPool<byte>.Shared.Rent(remaining);
             Array.Copy(combined, offset, carryBuf, 0, remaining);
-            _carryover[flowKey] = new Carryover(carryBuf, remaining);
+            _carryover[flowKey] = new Carryover(carryBuf, remaining, chunk.TimestampTicks);
         }
 
         ArrayPool<byte>.Shared.Return(combined);
@@ -84,6 +120,34 @@ public sealed class FrameAssembler
         if (_carryover.TryGetValue(flowKey, out var c) && c.Buffer != null)
             ArrayPool<byte>.Shared.Return(c.Buffer);
         _carryover.Remove(flowKey);
+    }
+
+    private void DropPrior(ulong flowKey, Carryover prior)
+    {
+        if (prior.Buffer != null)
+            ArrayPool<byte>.Shared.Return(prior.Buffer);
+        _carryover.Remove(flowKey);
+    }
+
+    private void PruneIdleFlows(long nowTicks)
+    {
+        if (_carryover.Count == 0 || nowTicks <= 0) return;
+
+        List<ulong>? stale = null;
+        foreach (var (flowKey, carryover) in _carryover)
+        {
+            if (nowTicks - carryover.LastSeenTicks > IdleFlowTimeoutTicks)
+                (stale ??= new List<ulong>()).Add(flowKey);
+        }
+        if (stale == null) return;
+
+        foreach (var flowKey in stale)
+        {
+            if (_carryover.TryGetValue(flowKey, out var c) && c.Buffer != null)
+                ArrayPool<byte>.Shared.Return(c.Buffer);
+            _carryover.Remove(flowKey);
+        }
+        Interlocked.Add(ref _droppedCarryovers, stale.Count);
     }
 
     public static bool TryReadVarInt(ReadOnlySpan<byte> span, out int value, out int bytesRead)
@@ -118,6 +182,12 @@ public sealed class FrameAssembler
     {
         public readonly byte[]? Buffer;
         public readonly int Length;
-        public Carryover(byte[] buffer, int length) { Buffer = buffer; Length = length; }
+        public readonly long LastSeenTicks;
+        public Carryover(byte[] buffer, int length, long lastSeenTicks)
+        {
+            Buffer = buffer;
+            Length = length;
+            LastSeenTicks = lastSeenTicks;
+        }
     }
 }

@@ -316,7 +316,8 @@ public partial class App : Application
                 try
                 {
                     File.AppendAllText(healthLogPath,
-                        $"{DateTime.Now:HH:mm:ss} stats recv={_capture.Health.ReceivedPackets} kernel_drop={_capture.Health.DroppedPackets} iface_drop={_capture.Health.InterfaceDroppedPackets} channel_drop={_capture.Health.DroppedAtChannel}\n");
+                        $"{DateTime.Now:HH:mm:ss} stats recv={_capture.Health.ReceivedPackets} kernel_drop={_capture.Health.DroppedPackets} iface_drop={_capture.Health.InterfaceDroppedPackets} channel_drop={_capture.Health.DroppedAtChannel} " +
+                        $"reorder_flows={reorderer.FlowCount} reorder_pruned={reorderer.PrunedIdleFlows} assembler_flows={assembler.FlowCount} carry_drop={assembler.DroppedCarryovers}\n");
                 }
                 catch { }
             }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));

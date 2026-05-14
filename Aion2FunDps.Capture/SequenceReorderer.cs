@@ -14,23 +14,35 @@ namespace Aion2FunDps.Capture;
 public sealed class SequenceReorderer
 {
     private const int MaxHoldEntriesPerFlow = 32;
+    private const int PruneIntervalPackets = 4096;
+    private static readonly long IdleFlowTimeoutTicks = TimeSpan.FromMinutes(2).Ticks;
 
     private readonly Dictionary<ulong, FlowState> _flows = new();
     private long _droppedRetransmits;
     private long _droppedOverflow;
+    private long _prunedIdleFlows;
+    private int _packetsSincePrune;
 
     public long DroppedRetransmits => Volatile.Read(ref _droppedRetransmits);
     public long DroppedOverflow => Volatile.Read(ref _droppedOverflow);
+    public long PrunedIdleFlows => Volatile.Read(ref _prunedIdleFlows);
     public int FlowCount => _flows.Count;
 
     public void Feed(in RawPacket packet, Action<OrderedChunk> onEmit)
     {
+        if (++_packetsSincePrune >= PruneIntervalPackets)
+        {
+            _packetsSincePrune = 0;
+            PruneIdleFlows(packet.TimestampTicks);
+        }
+
         var flowKey = packet.FlowKey;
         if (!_flows.TryGetValue(flowKey, out var flow))
         {
             flow = new FlowState();
             _flows[flowKey] = flow;
         }
+        flow.LastSeenTicks = packet.TimestampTicks;
 
         if (!flow.Initialized)
         {
@@ -116,10 +128,33 @@ public sealed class SequenceReorderer
         }
     }
 
+    private void PruneIdleFlows(long nowTicks)
+    {
+        if (_flows.Count == 0 || nowTicks <= 0) return;
+
+        List<ulong>? stale = null;
+        foreach (var (flowKey, flow) in _flows)
+        {
+            if (nowTicks - flow.LastSeenTicks > IdleFlowTimeoutTicks)
+                (stale ??= new List<ulong>()).Add(flowKey);
+        }
+        if (stale == null) return;
+
+        foreach (var flowKey in stale)
+        {
+            if (!_flows.TryGetValue(flowKey, out var flow)) continue;
+            foreach (var held in flow.Hold.Values)
+                ArrayPool<byte>.Shared.Return(held.Buffer);
+            _flows.Remove(flowKey);
+        }
+        Interlocked.Add(ref _prunedIdleFlows, stale.Count);
+    }
+
     private sealed class FlowState
     {
         public uint NextExpectedSeq;
         public bool Initialized;
+        public long LastSeenTicks;
         public readonly SortedDictionary<uint, HeldPacket> Hold = new();
     }
 

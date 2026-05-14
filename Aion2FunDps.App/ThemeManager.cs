@@ -27,6 +27,7 @@ public static class ThemeManager
     {
         new ThemeOption("Default",     "다크+블루 (기본)", "다크+블루 톤"),
         new ThemeOption("SweetPastel", "Sweet Pastel",     "크림 베이스에 핑크 액센트"),
+        new ThemeOption("RoseQuartz",  "Rose Quartz",      "여성스러운 핑크 톤 — 라즈베리 액센트"),
     };
 
     private static string _currentThemeId = "Default";

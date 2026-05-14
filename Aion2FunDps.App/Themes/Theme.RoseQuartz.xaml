@@ -1,0 +1,97 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ========================================================================
+         Theme: Rose Quartz
+         ========================================================================
+         The "actually pink" alternative to Sweet Pastel. Where SweetPastel
+         picked warm taupe + rose accents (and got the 사용자 feedback "이거
+         핑크 안 같다"), Rose Quartz makes saturated pink the surface itself
+         and pulls accents toward raspberry + rose-gold. Brand reference:
+         Pantone "Rose Quartz" (color of the year 2016) — feminine, polished,
+         not candy-toned.
+
+         사용자 의도 2026-05-14: "여자들이 좀더 좋아할만한 위와같은 핑크 /
+         진짜 전문적인 디자이너가 만든 ui처럼".
+
+         Contrast: deep wine text on saturated rose pink BG passes WCAG AA.
+         Alpha 0xED (93%) keeps the meter as a panel laid over the game
+         rather than a sticker — a hint of the world bleeds through without
+         degrading readability.
+         ======================================================================== -->
+
+    <!-- Surfaces -->
+    <!-- Saturated rose pink — the brand surface. Slightly toned down from
+         pure pink so text doesn't fight the BG; alpha 0xED lets game UI
+         glimmer through. -->
+    <SolidColorBrush x:Key="BgBrush"            Color="#EDF6B0C8"/>
+
+    <!-- Title bar / borders: deeper rose overlays at modest alpha. -->
+    <SolidColorBrush x:Key="TitleBarBrush"      Color="#33E58CA8"/>
+    <SolidColorBrush x:Key="BorderBrush"        Color="#44C76A8C"/>
+    <SolidColorBrush x:Key="DividerBrush"       Color="#1A8E4960"/>
+
+    <!-- Typography colors -->
+    <!-- Deep wine — high-contrast on the rose pink surface, passes AA. -->
+    <SolidColorBrush x:Key="TextBrush"          Color="#3B1A28"/>
+    <SolidColorBrush x:Key="MutedBrush"         Color="#7A4658"/>
+
+    <!-- Content accents -->
+    <!-- Rose-gold for dungeon name / focused boss / medal-style markers.
+         Warm enough to bridge pink surface and DPS raspberry. -->
+    <SolidColorBrush x:Key="GoldBrush"          Color="#B8853F"/>
+    <SolidColorBrush x:Key="GoldDimBrush"       Color="#8B6230"/>
+
+    <!-- DPS column (CyanBrush slot) — raspberry pink, the brand pop. The
+         saturation steps up from the BG so the most important number on
+         screen reads as "this is the value you care about". -->
+    <SolidColorBrush x:Key="CyanBrush"          Color="#C73E72"/>
+
+    <!-- Auto-reset banner (AmberBrush slot) — softer rose between BG and
+         DPS to avoid two equally-loud pinks fighting each other. -->
+    <SolidColorBrush x:Key="AmberBrush"         Color="#D85F8A"/>
+    <SolidColorBrush x:Key="AmberSoftBrush"     Color="#22D85F8A"/>
+
+    <!-- Typography — same family across themes. One typography choice owned
+         at the design-system level keeps "this app's voice" consistent
+         regardless of color theme. -->
+    <FontFamily x:Key="UiFont">Pretendard, Malgun Gothic, Segoe UI</FontFamily>
+    <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
+
+    <!-- Row + section surface overlays. Dark-alpha against the pink BG
+         (same low opacity as other themes so the overlay reads as a
+         subtle tint, not a heavy stripe). -->
+    <SolidColorBrush x:Key="RowOverlayBrush"      Color="#08000000"/>
+    <SolidColorBrush x:Key="SectionOverlayBrush"  Color="#0D000000"/>
+    <SolidColorBrush x:Key="FooterOverlayBrush"   Color="#0A000000"/>
+
+    <!-- Per-row signature colors. Self = raspberry; primary guess = rose-gold. -->
+    <SolidColorBrush x:Key="SelfAccentBrush"          Color="#C73E72"/>
+    <SolidColorBrush x:Key="PrimaryGuessAccentBrush"  Color="#B8853F"/>
+    <LinearGradientBrush x:Key="SelfRowBgBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#33C73E72" Offset="0"/>
+        <GradientStop Color="#14C73E72" Offset="0.45"/>
+        <GradientStop Color="#08C73E72" Offset="1"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PrimaryGuessRowBgBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="#2EB8853F" Offset="0"/>
+        <GradientStop Color="#12B8853F" Offset="0.45"/>
+        <GradientStop Color="#06B8853F" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- Damage bar — translucent raspberry. -->
+    <SolidColorBrush x:Key="DamageBarBrush" Color="#55C73E72"/>
+
+    <!-- Logo (AION2FUN wordmark) — pink-to-magenta gradient. -->
+    <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0"    Color="#FFE8F0"/>
+        <GradientStop Offset="0.55" Color="#E58CA8"/>
+        <GradientStop Offset="1"    Color="#9E2E54"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="LogoAccentBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Offset="0" Color="#C5547D"/>
+        <GradientStop Offset="1" Color="#6E1E3E"/>
+    </LinearGradientBrush>
+    <Color x:Key="LogoGlowColor">#C73E72</Color>
+
+</ResourceDictionary>

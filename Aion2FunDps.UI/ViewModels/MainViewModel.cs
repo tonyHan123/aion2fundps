@@ -49,6 +49,16 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool showAutoResetFlash;
     [ObservableProperty] private double windowOpacity = 1.0;   // 0.2..1.0, bound to Window.Opacity in XAML
     [ObservableProperty] private bool isCompact;               // collapse-to-titlebar mode (replaces native minimize)
+
+    // Update notification surface — set by App.xaml.cs after the background
+    // GitHub Releases check completes. MainWindow's title bar binds a
+    // notification button to these so the user can discover and trigger an
+    // update without leaving the meter.
+    [ObservableProperty] private bool isUpdateAvailable;
+    [ObservableProperty] private string updateVersionLabel = "";
+    [ObservableProperty] private string updateDownloadUrl = "";
+    [ObservableProperty] private string updateHtmlUrl = "";
+
     [ObservableProperty] private string? currentDungeonName;
     public bool HasDungeon => !string.IsNullOrEmpty(CurrentDungeonName);
     partial void OnCurrentDungeonNameChanged(string? value) => OnPropertyChanged(nameof(HasDungeon));

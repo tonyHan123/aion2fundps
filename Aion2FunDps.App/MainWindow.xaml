@@ -111,6 +111,16 @@
                                 ToolTip="투명도 (왼쪽일수록 투명)"
                                 VerticalAlignment="Center"
                                 Margin="0,0,8,0"/>
+                        <Button x:Name="UpdateBtn" Click="UpdateBtn_Click"
+                                Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVis}}"
+                                ToolTip="{Binding UpdateVersionLabel, StringFormat=새 버전 {0} — 클릭하여 다운로드}"
+                                Height="22" Padding="6,0" Background="Transparent"
+                                Foreground="{DynamicResource AmberBrush}" BorderThickness="0"
+                                FontSize="11" FontWeight="Bold" VerticalAlignment="Center">
+                            <TextBlock>
+                                <Run Text="🔔 "/><Run Text="{Binding UpdateVersionLabel}"/>
+                            </TextBlock>
+                        </Button>
                         <Button x:Name="MarkBtn" Content="📌" Click="MarkBtn_Click"
                                 ToolTip="타임스탬프 기록 (디버그용 — 게임 중 이상 시점 표시)"
                                 Width="26" Height="22" Background="Transparent"

@@ -283,6 +283,53 @@ public partial class MainWindow : Window
         MarkBtn.Content = MarkBtnIdleContent;
     }
 
+    private bool _updateInProgress;
+    private async void UpdateBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updateInProgress) return;
+        if (DataContext is not Aion2FunDps.UI.ViewModels.MainViewModel vm) return;
+        if (string.IsNullOrWhiteSpace(vm.UpdateDownloadUrl)) return;
+
+        var confirm = MessageBox.Show(
+            $"새 버전 {vm.UpdateVersionLabel} 을 다운로드하시겠어요?\n\n다운로드 후 미터를 종료하고 새 파일로 교체해 주시면 됩니다.",
+            "aion2fundps 업데이트",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Information);
+        if (confirm != MessageBoxResult.OK) return;
+
+        _updateInProgress = true;
+        try
+        {
+            UpdateBtn.IsEnabled = false;
+            UpdateBtn.Content = "다운로드 중…";
+            var path = await UpdateChecker.DownloadAsync(vm.UpdateDownloadUrl);
+            if (path is null)
+            {
+                MessageBox.Show(
+                    "다운로드에 실패했습니다. 네트워크를 확인하시고, 또는 GitHub Releases 페이지에서 직접 받아주세요.",
+                    "aion2fundps",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+            var done = MessageBox.Show(
+                "다운로드가 완료되었습니다.\n\n탐색기에서 새 파일을 띄워 드릴게요. 미터를 종료한 뒤 기존 파일을 새 파일로 덮어쓰고 더블클릭으로 실행해 주세요.",
+                "aion2fundps 업데이트",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            try
+            {
+                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
+            }
+            catch { /* explorer launch is convenience only */ }
+        }
+        finally
+        {
+            _updateInProgress = false;
+            UpdateBtn.IsEnabled = true;
+        }
+    }
+
     private void PlayerRow_Click(object sender, MouseButtonEventArgs e)
     {
         // The DataContext on a row's outer Grid is the PlayerRowViewModel for

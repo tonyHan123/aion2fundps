@@ -383,6 +383,24 @@ public partial class App : Application
             };
             _foregroundWatcher.Start();
 
+            // Update check — fire-and-forget. The HttpClient inside UpdateChecker
+            // is timeout-bounded (8s) and swallows every failure, so the worst
+            // case is no banner shown. Run on a background thread; flip the
+            // VM flags via the dispatcher when (if) a newer release is found.
+            _ = Task.Run(async () =>
+            {
+                var update = await UpdateChecker.CheckAsync().ConfigureAwait(false);
+                if (update is null) return;
+                Log($"Update available: {update.Version}");
+                await window.Dispatcher.InvokeAsync(() =>
+                {
+                    vm.UpdateVersionLabel = update.Version;
+                    vm.UpdateDownloadUrl = update.DownloadUrl;
+                    vm.UpdateHtmlUrl = update.HtmlUrl;
+                    vm.IsUpdateAvailable = true;
+                });
+            });
+
             Log("OnStartup complete");
         }
         catch (Exception ex)

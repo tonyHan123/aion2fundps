@@ -98,9 +98,10 @@
                         <Run Text="AION" Foreground="{DynamicResource LogoMainBrush}"/><Run Text="2" FontSize="18" Foreground="{DynamicResource LogoAccentBrush}"/><Run Text="FUN" Foreground="{DynamicResource LogoMainBrush}"/>
                     </TextBlock>
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right">
-                        <TextBlock Text="🌗"
+                        <TextBlock Text="&#xE706;"
                                    ToolTip="투명도 (왼쪽일수록 투명)"
                                    Foreground="{DynamicResource MutedBrush}"
+                                   FontFamily="Segoe MDL2 Assets"
                                    FontSize="11"
                                    VerticalAlignment="Center"
                                    Margin="0,0,4,0"/>
@@ -118,32 +119,34 @@
                                 Foreground="{DynamicResource AmberBrush}" BorderThickness="0"
                                 FontSize="11" FontWeight="Bold" VerticalAlignment="Center">
                             <TextBlock>
-                                <Run Text="🔔 "/><Run Text="{Binding UpdateVersionLabel}"/>
+                                <Run Text="&#xE7E7;" FontFamily="Segoe MDL2 Assets"/><Run Text="  "/><Run Text="{Binding UpdateVersionLabel}"/>
                             </TextBlock>
                         </Button>
-                        <Button x:Name="MarkBtn" Content="📌" Click="MarkBtn_Click"
+                        <Button x:Name="MarkBtn" Content="&#xE840;" Click="MarkBtn_Click"
                                 ToolTip="타임스탬프 기록 (디버그용 — 게임 중 이상 시점 표시)"
                                 Width="26" Height="22" Background="Transparent"
                                 Foreground="{DynamicResource TextBrush}" BorderThickness="0"
-                                FontSize="13"/>
-                        <Button Content="⚙" Click="SettingsBtn_Click"
+                                FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                        <Button Content="&#xE713;" Click="SettingsBtn_Click"
                                 ToolTip="설정 (테마 / 표시 옵션)"
                                 Width="26" Height="22" Background="Transparent"
                                 Foreground="{DynamicResource TextBrush}" BorderThickness="0"
-                                FontSize="14"/>
-                        <Button Content="↻" Command="{Binding ResetSessionCommand}"
+                                FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                        <Button Content="&#xE72C;" Command="{Binding ResetSessionCommand}"
                                 ToolTip="세션 리셋 (Ctrl+R)"
                                 Width="26" Height="22" Background="Transparent"
                                 Foreground="{DynamicResource TextBrush}" BorderThickness="0"
-                                FontSize="14" FontWeight="Bold"/>
-                        <Button Content="—" Click="MinBtn_Click"
+                                FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                        <Button Content="&#xE921;" Click="MinBtn_Click"
+                                ToolTip="컴팩트 모드 토글 (타이틀바만 남기기)"
                                 Width="26" Height="22" Background="Transparent"
                                 Foreground="{DynamicResource TextBrush}" BorderThickness="0"
-                                FontSize="13"/>
-                        <Button Content="✕" Click="CloseBtn_Click"
+                                FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                        <Button Content="&#xE711;" Click="CloseBtn_Click"
+                                ToolTip="종료"
                                 Width="26" Height="22" Background="Transparent"
                                 Foreground="{DynamicResource TextBrush}" BorderThickness="0"
-                                FontSize="13"/>
+                                FontFamily="Segoe MDL2 Assets" FontSize="13"/>
                     </StackPanel>
                 </DockPanel>
             </Border>

@@ -245,7 +245,7 @@ public partial class MainWindow : Window
 
     private int _markCounter;
     private System.Windows.Threading.DispatcherTimer? _markFlashTimer;
-    private const string MarkBtnIdleContent = "📌";
+    private const string MarkBtnIdleContent = "";
     private static readonly string MarksLogPath = LogPaths.Combine("user-marks.log");
 
     private void MarkBtn_Click(object sender, RoutedEventArgs e)

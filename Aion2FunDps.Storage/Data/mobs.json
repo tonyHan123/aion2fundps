@@ -8267,6 +8267,21 @@
     "boss": false
   },
   {
+    "code": 2300334,
+    "name": "로타르",
+    "boss": true
+  },
+  {
+    "code": 2300335,
+    "name": "롭스티노",
+    "boss": true
+  },
+  {
+    "code": 2300336,
+    "name": "크로메데의 심연",
+    "boss": true
+  },
+  {
     "code": 2300356,
     "name": "우두머리 자이프",
     "boss": false

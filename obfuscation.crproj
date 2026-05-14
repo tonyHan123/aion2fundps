@@ -30,7 +30,7 @@
          last so its references to Core/Protocol/etc. resolve to the
          already-obfuscated dlls.
          ======================================================================== -->
-    <module path="bin\Release\net10.0\Aion2FunDps.Core.dll">
+    <module path="Aion2FunDps.Core\bin\Release\net10.0\Aion2FunDps.Core.dll">
         <rule pattern="true" preset="aggressive" inherit="false">
             <protection id="anti debug" />
             <protection id="anti dump" />
@@ -47,7 +47,7 @@
         </rule>
     </module>
 
-    <module path="bin\Release\net10.0\Aion2FunDps.Protocol.dll">
+    <module path="Aion2FunDps.Protocol\bin\Release\net10.0\Aion2FunDps.Protocol.dll">
         <rule pattern="true" preset="aggressive" inherit="false">
             <protection id="anti debug" />
             <protection id="anti tamper" />
@@ -76,7 +76,7 @@
         </rule>
     </module>
 
-    <module path="bin\Release\net10.0\Aion2FunDps.Capture.dll">
+    <module path="Aion2FunDps.Capture\bin\Release\net10.0\Aion2FunDps.Capture.dll">
         <rule pattern="true" preset="aggressive" inherit="false">
             <protection id="anti debug" />
             <protection id="anti tamper" />
@@ -86,7 +86,7 @@
         </rule>
     </module>
 
-    <module path="bin\Release\net10.0\Aion2FunDps.Storage.dll">
+    <module path="Aion2FunDps.Storage\bin\Release\net10.0\Aion2FunDps.Storage.dll">
         <rule pattern="true" preset="aggressive" inherit="false">
             <protection id="anti tamper" />
             <protection id="constants" />
@@ -95,7 +95,7 @@
         </rule>
     </module>
 
-    <module path="bin\Release\net10.0-windows\Aion2FunDps.UI.dll">
+    <module path="Aion2FunDps.UI\bin\Release\net10.0-windows\Aion2FunDps.UI.dll">
         <rule pattern="true" preset="aggressive" inherit="false">
             <protection id="anti tamper" />
             <protection id="constants" />
@@ -110,7 +110,7 @@
         </rule>
     </module>
 
-    <module path="bin\Release\net10.0-windows\Aion2FunDps.App.dll">
+    <module path="Aion2FunDps.App\bin\Release\net10.0-windows\win-x64\Aion2FunDps.App.dll">
         <rule pattern="true" preset="aggressive" inherit="false">
             <protection id="anti debug" />
             <protection id="anti tamper" />
@@ -133,5 +133,11 @@
             <protection id="rename" action="remove" />
         </rule>
     </module>
+
+    <!-- Probe paths so ConfuserEx can resolve .NET 10 runtime assemblies
+         (System.Memory etc.). The self-contained publish folder has every
+         transitive runtime dep already collected next to the exe. -->
+    <probePath>Aion2FunDps.App\bin\Release\net10.0-windows\win-x64\publish</probePath>
+    <probePath>Aion2FunDps.App\bin\Release\net10.0-windows\win-x64</probePath>
 
 </project>

@@ -213,23 +213,21 @@ public partial class MainViewModel : ObservableObject
         // Reuse the bossSnap from earlier for coherent reads — avoid another
         // round of separate _aggregator.* property accesses that could race.
         //
-        // Damage column always reflects session totals (TotalDamage / Dps).
-        // The AutoResetOnBoss flag controls WHEN the session resets — on
-        // NEW_BOSS_FIRED in ON mode, never in OFF mode — but the column
-        // never per-target switches. Earlier code switched to
-        // GetDamageToTarget(focusedBoss) while a boss was engaged, which
-        // surfaced as "낮은 숫자 + 정렬이 0이면 밑으로" the moment focus
-        // shifted to a new entity in multi-boss rooms (사용자 보고
-        // 2026-05-14: 붉은 연심의 거울 던전, "딜이 자꾸 사라지는 것 같다").
-        // The per-target switch produced no useful extra information in ON
-        // mode either, because ResetCore on NEW_BOSS_FIRED already makes
-        // TotalDamage start from 0 for the new fight — same numbers, just
-        // visually stable as a single column instead of swapping sources.
-        // Cumulative contract (OFF mode) clarified separately in 6afd751.
+        // AutoResetOnBoss=false (cumulative mode): the user has explicitly
+        // opted out of per-boss reset, so the per-boss Damage column would
+        // make the leaderboard "drop to 0" each time focus shifts to a new
+        // boss — directly contradicting the cumulative contract (사용자 보고
+        // 2026-05-06: "보스1 잡고 2 잡는데 초기화되는데 다잡고나니깐 그때서야
+        // 합산되고 보스3 때리니깐 초기화"). In cumulative mode, always show
+        // session totals — the user wants damage to keep climbing across
+        // every boss in the dungeon.
         int? bossTargetId = bossSnap.LastKilledBossId
             ?? (bossSnap.IsBossMode ? bossSnap.FocusedEntityId : null);
+        bool useTargetedDamage = bossTargetId.HasValue && _aggregator.AutoResetOnBoss;
         var crew = _aggregator.OurCrew()
-            .Select(p => (Player: p, Damage: p.TotalDamage, Dps: p.Dps))
+            .Select(p => useTargetedDamage
+                ? (Player: p, Damage: p.GetDamageToTarget(bossTargetId!.Value), Dps: p.GetDpsToTarget(bossTargetId.Value))
+                : (Player: p, Damage: p.TotalDamage, Dps: p.Dps))
             .OrderByDescending(row => row.Damage)
             .Take(10)
             .ToList();

@@ -311,10 +311,13 @@ public static class PartyAssemblyHandler
 
     /// <summary>
     /// Scan op=0297 body for the dungeon id that sits right after the
-    /// room-name + 1-byte count byte (=4 or 8). KR live values land in
-    /// 600000-699999. Returns 0 when the packet doesn't carry a dungeon
-    /// signal (e.g. lobby browse without a selection). Mirrors A2Viewer's
-    /// ScanDungeonIdRaw.
+    /// room-name + 1-byte count byte (=4 or 8). KR live values span the
+    /// 500000-999999 range — the original 600k-700k filter missed dungeons
+    /// like 붉은 연심의 거울 (599108, 사용자 보고 2026-05-14: 새 초월 던전
+    /// 입장해도 던전 이름이 안 잡힘 — log analysis showed parsed dungeonId
+    /// was 599108 but filter rejected it). Returns 0 when the packet doesn't
+    /// carry a dungeon signal (e.g. lobby browse without a selection).
+    /// Mirrors A2Viewer's ScanDungeonIdRaw.
     /// </summary>
     public static int ExtractDungeonId(byte[] body)
     {
@@ -336,7 +339,7 @@ public static class PartyAssemblyHandler
         pos++;
 
         int dungeonId = ReadLittleEndianInt32(body, pos);
-        return (dungeonId >= 600_000 && dungeonId < 700_000) ? dungeonId : 0;
+        return (dungeonId >= 500_000 && dungeonId < 1_000_000) ? dungeonId : 0;
     }
 
     private static bool TryReadRoomHeader(byte[] body, int offset, out RoomHeader header)

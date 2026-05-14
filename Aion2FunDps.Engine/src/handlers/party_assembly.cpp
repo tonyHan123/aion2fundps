@@ -373,7 +373,9 @@ int32_t extract_dungeon_id(const uint8_t* body, size_t body_length) noexcept
     ++pos;
 
     const int32_t dungeon_id = read_i32_le(body, pos, body_length);
-    return (dungeon_id >= 600'000 && dungeon_id < 700'000) ? dungeon_id : 0;
+    // Range widened from 600k-700k to 500k-1M (사용자 보고 2026-05-14:
+    // 붉은 연심의 거울 = 599108 was rejected by the narrower filter).
+    return (dungeon_id >= 500'000 && dungeon_id < 1'000'000) ? dungeon_id : 0;
 }
 
 }  // namespace aion2fun::handlers

@@ -129,4 +129,3 @@ aion2fundps/
 ## 운영자
 
 - GitHub: [@tonyHan123](https://github.com/tonyHan123)
-- 디시 아이온2 갤러리에서 동일 닉네임으로 활동

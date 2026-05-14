@@ -328,6 +328,16 @@ public sealed class DpsAggregator
         // doesn't mutate roster state.
         SweepLiveStatusPhantoms();
 
+        // Final boss just killed (LastKilledBossId set, no NEW_BOSS_FIRED
+        // since) — preserve every member row so the user can compare
+        // post-fight results until they explicitly Ctrl+R or land a hit
+        // on the next encounter. 사용자 보고 2026-05-14: "마지막 3보스
+        // 다잡고 나서 사람들이 방나가도 계속 다른사람들 딜미터기 기록
+        // 볼수있게 유지". ResetCore on the next NEW_BOSS_FIRED clears
+        // LastKilledBossId automatically → eviction resumes for the new
+        // fight without manual intervention.
+        if (LastKilledBossId.HasValue) return;
+
         // In any matchmaking room (lobby or dungeon-from-room): the state
         // machine owns membership. Don't second-guess it with time-based
         // eviction. The earlier AutoResetOnBoss=false gate (commit
@@ -1011,19 +1021,34 @@ public sealed class DpsAggregator
                         && roster.Members.All(m => m.Server > 0 && m.CombatPower > 0);
                     var newSet = new HashSet<int>(memberCanonicalIds);
 
+                    // Final-boss-kill preservation: when LastKilledBossId is
+                    // set (we just killed a boss and haven't engaged the next
+                    // one yet), skip the toRemove pass entirely. The user
+                    // wants every member who was in the run to stay on screen
+                    // for post-fight comparison — even if a follow-up Strong
+                    // arrives with a shorter member list because someone left
+                    // the matchmaking room (사용자 보고 2026-05-14: "마지막
+                    // 3보스 다잡고 나서 사람들이 방나가도 계속 다른사람들
+                    // 딜미터기 기록 볼수있게 유지"). ResetCore on the next
+                    // NEW_BOSS_FIRED clears LastKilledBossId → toRemove
+                    // resumes for the new fight. New members from the
+                    // incoming roster still get added below.
                     var toRemove = new List<int>();
-                    foreach (var id in _partyMembers)
+                    if (!LastKilledBossId.HasValue)
                     {
-                        if (newSet.Contains(id)) continue;
-                        if (id == selfId) continue;  // self always preserved
-                        if (!incomingComplete)
+                        foreach (var id in _partyMembers)
                         {
-                            // Partial broadcast: keep damage-bearing rows so
-                            // kill stats don't get wiped by a 4-of-6 update.
-                            var prev = Current.GetExisting(id);
-                            if (prev != null && prev.TotalDamage > 0) continue;
+                            if (newSet.Contains(id)) continue;
+                            if (id == selfId) continue;  // self always preserved
+                            if (!incomingComplete)
+                            {
+                                // Partial broadcast: keep damage-bearing rows so
+                                // kill stats don't get wiped by a 4-of-6 update.
+                                var prev = Current.GetExisting(id);
+                                if (prev != null && prev.TotalDamage > 0) continue;
+                            }
+                            toRemove.Add(id);
                         }
-                        toRemove.Add(id);
                     }
                     foreach (var id in toRemove)
                     {

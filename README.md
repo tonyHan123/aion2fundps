@@ -2,7 +2,7 @@
 
 아이온2 KR 서버용 무료 오픈소스 DPS 미터기.
 
-> 🚧 현재 **v0.1.0-alpha** — 첫 공개 버전입니다. 사용 중 발견되는 문제는 [Issues](https://github.com/tonyHan123/aion2fundps/issues) 로 알려주세요.
+> 🚧 현재 **v0.1.0-alpha** — 첫 공개 버전입니다. 사용 중 발견되는 문제는 [Issues](https://github.com/tonyHan123/aion2fundps/issues, 혹은 discord https://discord.gg/Vxq7gZZBH 로 알려주세요.
 
 ## 주요 기능
 
@@ -129,3 +129,4 @@ aion2fundps/
 ## 운영자
 
 - GitHub: [@tonyHan123](https://github.com/tonyHan123)
+- discord : https://discord.gg/Vxq7gZZBH

@@ -1140,7 +1140,18 @@ public sealed class DpsAggregator
                     // natural reset trigger that matches user expectation
                     // (사용자 보고 2026-05-04: 던전 끝나도 누적 유지, 다음
                     // 원정방 입장 시 리셋).
-                    if (AutoResetOnBoss && !LastKilledBossId.HasValue)
+                    //
+                    // FocusedEntityId 게이트 (사용자 보고 2026-05-15 00:24 침식
+                    // 3보스): 보스 도중 사망 + 부활템 소진 → 와이프 → 던전 입구
+                    // 부활 → 도보 복귀 (5분) 사이클에서 서버가 op=1d97 빈 본문을
+                    // 보내고, 우리가 그걸 "파티 해체"로 해석해 8명 전원 wipe →
+                    // 다음 PARTY_ASSEMBLY (5분 후 보스방 도착) 까지 미터에 본인만
+                    // 보임. 보스 트래커가 활성 (FocusedEntityId 보유) 이면 던전
+                    // 안이고, 1d97 은 일시적 사망/관전 신호로 해석. wipe 보류해
+                    // PARTY_ASSEMBLY 가 자연 복구하도록 둠. 던전 밖 (로비 / 마을)
+                    // 에서는 FocusedEntityId 가 null 이므로 기존 wipe 동작 유지.
+                    bool dungeonActive = _boss.FocusedEntityId.HasValue;
+                    if (AutoResetOnBoss && !LastKilledBossId.HasValue && !dungeonActive)
                         WipeMembership();
                     _currentMatchmakingRoom = null;
                 }

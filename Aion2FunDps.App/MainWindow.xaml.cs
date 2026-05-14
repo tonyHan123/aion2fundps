@@ -38,6 +38,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+#if !DEBUG
+        MarkBtn.Visibility = Visibility.Collapsed;
+#endif
+
         // Hide from Alt+Tab — two-layer defense because WS_EX_TOOLWINDOW
         // alone isn't reliable on every Windows 10/11 build, especially
         // when the meter has been recently activated (clicked) — the modern

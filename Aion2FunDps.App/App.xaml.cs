@@ -31,9 +31,12 @@ public partial class App : Application
     private System.Threading.Timer? _healthHeartbeatTimer;
     private ForegroundWatcher? _foregroundWatcher;
     private MainWindow? _mainWindow;
+    // Held for the lifetime of the process — releasing it would let another
+    // instance start and contest the packet capture / hotkeys / log files.
+    private System.Threading.Mutex? _singletonMutex;
     public AppSettings Settings { get; private set; } = new();
     public static App Instance => (App)Current;
-    private static readonly string LogPath = Path.Combine(AppContext.BaseDirectory, "startup.log");
+    private static readonly string LogPath = LogPaths.Combine("startup.log");
 
     static App()
     {
@@ -48,6 +51,28 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         Log("OnStartup begin");
+
+        // Single-instance guard. Two meters fighting over the same NIC means
+        // duplicate packet processing, duplicate hotkey registration, and
+        // log-file contention — all of which surface as "값이 이상해요" /
+        // "단축키가 안 먹어요" reports. The local-namespace mutex is per-user
+        // (matches the per-user packet capture context). Held in a field so
+        // the GC doesn't release the ownership the moment OnStartup returns.
+        const string mutexName = "Local\\aion2fundps_singleton";
+        _singletonMutex = new System.Threading.Mutex(initiallyOwned: true, mutexName, out bool createdNew);
+        if (!createdNew)
+        {
+            Log("Another instance is already running — exiting.");
+            MessageBox.Show(
+                "aion2fundps 가 이미 실행 중입니다.\n작업표시줄/트레이를 확인해 주세요.",
+                "aion2fundps",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            _singletonMutex.Dispose();
+            _singletonMutex = null;
+            Shutdown(0);
+            return;
+        }
 
         // Load persisted settings BEFORE anything that depends on them
         // (theme, window position, opacity, AutoResetOnBoss). Defaults are
@@ -136,7 +161,7 @@ public partial class App : Application
             _capture = new NpcapAdapter(new CaptureOptions())
             {
 #if DEBUG
-                UdpDumpPath = Path.Combine(AppContext.BaseDirectory, "udp-dump.log"),
+                UdpDumpPath = LogPaths.Combine("udp-dump.log"),
 #endif
             };
             Log($"  selected: {_capture.SelectedInterface}");
@@ -190,27 +215,27 @@ public partial class App : Application
                 try
                 {
                     File.AppendAllText(
-                        Path.Combine(AppContext.BaseDirectory, "user-marks.log"),
+                        LogPaths.Combine("user-marks.log"),
                         $"=== {DateTime.Now:yyyy-MM-dd HH:mm:ss} session start ===\n");
                 }
                 catch { }
 
-                var profileDebugLogPath = Path.Combine(AppContext.BaseDirectory, "profile-debug.log");
+                var profileDebugLogPath = LogPaths.Combine("profile-debug.log");
                 try
                 {
                     File.AppendAllText(profileDebugLogPath, $"=== {DateTime.Now:HH:mm:ss.fff} profile logger armed\n");
                 }
                 catch { }
-                managedDispatcher.DiagnosticLogPath = Path.Combine(AppContext.BaseDirectory, "nick-debug.log");
-                managedDispatcher.UnknownSnifferLogPath = Path.Combine(AppContext.BaseDirectory, "mobspawn-debug.log");
-                managedDispatcher.EncounterAnnounceLogPath = Path.Combine(AppContext.BaseDirectory, "encounter-debug.log");
+                managedDispatcher.DiagnosticLogPath = LogPaths.Combine("nick-debug.log");
+                managedDispatcher.UnknownSnifferLogPath = LogPaths.Combine("mobspawn-debug.log");
+                managedDispatcher.EncounterAnnounceLogPath = LogPaths.Combine("encounter-debug.log");
                 managedDispatcher.ProfileDebugLogPath = profileDebugLogPath;
-                managedDispatcher.SummonSpawnLogPath = Path.Combine(AppContext.BaseDirectory, "summon-spawn-debug.log");
-                managedDispatcher.PartyAssemblyLogPath = Path.Combine(AppContext.BaseDirectory, "party-assembly-debug.log");
-                managedDispatcher.LiveStatusLogPath = Path.Combine(AppContext.BaseDirectory, "livestatus-debug.log");
-                managedDispatcher.BulkInfoLogPath = Path.Combine(AppContext.BaseDirectory, "bulk-debug.log");
-                managedDispatcher.PartyFamilyLogPath = Path.Combine(AppContext.BaseDirectory, "party-family-debug.log");
-                managedDispatcher.NicknameSweepLogPath = Path.Combine(AppContext.BaseDirectory, "nickname-sweep-debug.log");
+                managedDispatcher.SummonSpawnLogPath = LogPaths.Combine("summon-spawn-debug.log");
+                managedDispatcher.PartyAssemblyLogPath = LogPaths.Combine("party-assembly-debug.log");
+                managedDispatcher.LiveStatusLogPath = LogPaths.Combine("livestatus-debug.log");
+                managedDispatcher.BulkInfoLogPath = LogPaths.Combine("bulk-debug.log");
+                managedDispatcher.PartyFamilyLogPath = LogPaths.Combine("party-family-debug.log");
+                managedDispatcher.NicknameSweepLogPath = LogPaths.Combine("nickname-sweep-debug.log");
 #endif
             }
             var aggregator = new DpsAggregator
@@ -218,8 +243,8 @@ public partial class App : Application
                 DungeonDb = dungeonDb,
             };
 #if DEBUG
-            aggregator.Boss.DiagnosticLogPath = Path.Combine(AppContext.BaseDirectory, "reset-debug.log");
-            aggregator.RosterDebugLogPath = Path.Combine(AppContext.BaseDirectory, "roster-debug.log");
+            aggregator.Boss.DiagnosticLogPath = LogPaths.Combine("reset-debug.log");
+            aggregator.RosterDebugLogPath = LogPaths.Combine("roster-debug.log");
 #endif
 
             // Wire mob_code → boss-status predicate. Three-state result:
@@ -275,7 +300,7 @@ public partial class App : Application
             // we can correlate "lobby joins missed at HH:MM" with kernel/channel
             // drops in the same window. Without this, channel saturation over a
             // long session is silent (drop counter increments but nobody reads it).
-            var healthLogPath = Path.Combine(AppContext.BaseDirectory, "capture-health.log");
+            var healthLogPath = LogPaths.Combine("capture-health.log");
             try { File.AppendAllText(healthLogPath, $"=== {DateTime.Now:HH:mm:ss} session start\n"); } catch { }
             _capture.Health.DropDetected += (_, ea) =>
             {
@@ -337,10 +362,22 @@ public partial class App : Application
             // Self-foreground is preserved (clicking the meter to drag it
             // doesn't trigger a hide). Process name "aion2" matches what
             // A2Viewer's OverlayForm uses against the live KR client.
+            //
+            // Discovery gate: if the user launches the meter before starting
+            // the game, the watcher's initial "aion2 not foreground" signal
+            // would Hide() the window and leave a first-time user staring at
+            // an empty desktop wondering whether the app actually launched
+            // (it does — but ShowInTaskbar=False + Alt-Tab-hidden + Hide()
+            // makes the window invisible by every channel). Suppress Hide()
+            // until the meter has seen the game be foreground at least once.
+            // After that, the standard overlay show/hide loop is active.
             Log("Starting foreground watcher (target=aion2)");
             _foregroundWatcher = new ForegroundWatcher("aion2");
+            bool gameSeen = false;
             _foregroundWatcher.ActiveChanged += active =>
             {
+                if (active) gameSeen = true;
+                if (!gameSeen) return;
                 if (active) window.Show();
                 else        window.Hide();
             };
@@ -412,6 +449,9 @@ public partial class App : Application
         _cts?.Cancel();
         _capture?.Dispose();
         _nativeDispatcher?.Dispose();
+        _singletonMutex?.ReleaseMutex();
+        _singletonMutex?.Dispose();
+        _singletonMutex = null;
         base.OnExit(e);
         // Force-terminate the host process. The capture task reads from a
         // bounded channel via ReadAllAsync(token) — token cancellation doesn't

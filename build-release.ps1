@@ -130,13 +130,43 @@ if ($LASTEXITCODE -ne 0) { throw "Single-file repack failed (exit $LASTEXITCODE)
 $publishDir = "Aion2FunDps.App\bin\Release\net10.0-windows\win-x64\publish"
 $finalExe = Join-Path $publishDir "Aion2FunDps.App.exe"
 
-Write-Host ""
-if (Test-Path $finalExe) {
-    $size = [math]::Round((Get-Item $finalExe).Length / 1MB, 1)
-    Write-Host "==> SUCCESS" -ForegroundColor Green
-    Write-Host "   Output: $finalExe ($size MB)"
-    Write-Host "   Bundle this exe + THIRD_PARTY_NOTICES.txt for distribution."
-} else {
+if (-not (Test-Path $finalExe)) {
+    Write-Host ""
     Write-Host "==> Final exe not found at expected path: $finalExe" -ForegroundColor Red
     Write-Host "   Check publish output above for clues."
+    exit 1
 }
+
+Write-Host ""
+Write-Host "==> Stage 4: Assemble distribution folder (bin\release-final)" -ForegroundColor Cyan
+# The publish folder contains the final exe but also .pdb sidecars and any
+# stale companion files the SDK leaves behind. Uploading that whole folder
+# would leak debugging symbols and confuse users. Mirror only the user-facing
+# assets into bin\release-final\ so the release upload step has an obvious
+# single source for "what goes into the GitHub Release".
+$distDir = "bin\release-final"
+if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
+New-Item -ItemType Directory -Path $distDir | Out-Null
+
+Copy-Item $finalExe (Join-Path $distDir "Aion2FunDps.App.exe") -Force
+
+$notice = "THIRD_PARTY_NOTICES.txt"
+if (Test-Path $notice) {
+    Copy-Item $notice (Join-Path $distDir $notice) -Force
+} else {
+    Write-Host "   WARNING: THIRD_PARTY_NOTICES.txt not found at repo root" -ForegroundColor Yellow
+}
+
+$size = [math]::Round((Get-Item $finalExe).Length / 1MB, 1)
+$hash = (Get-FileHash $finalExe -Algorithm SHA256).Hash
+
+Write-Host ""
+Write-Host "==> SUCCESS" -ForegroundColor Green
+Write-Host "   Distribution folder: $distDir"
+Get-ChildItem $distDir | ForEach-Object {
+    $kb = [math]::Round($_.Length / 1MB, 2)
+    Write-Host "     $($_.Name)  ($kb MB)"
+}
+Write-Host ""
+Write-Host "   SHA256: $hash"
+Write-Host "   Upload everything in $distDir to the GitHub Release."

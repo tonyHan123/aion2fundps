@@ -44,8 +44,8 @@ public sealed class DiagnosticLogger
         _mobDb = mobDb;
         _skillDb = skillDb;
 
-        _killsLogPath = Path.Combine(AppContext.BaseDirectory, "boss-kills.log");
-        _summaryLogPath = Path.Combine(AppContext.BaseDirectory, "session-summary.log");
+        _killsLogPath = LogPaths.Combine("boss-kills.log");
+        _summaryLogPath = LogPaths.Combine("session-summary.log");
 
         _aggregator.Boss.BossKilled += OnBossKilled;
     }
@@ -107,7 +107,7 @@ public sealed class DiagnosticLogger
             try
             {
                 File.AppendAllText(
-                    Path.Combine(AppContext.BaseDirectory, "diag-errors.log"),
+                    LogPaths.Combine("diag-errors.log"),
                     $"{DateTime.Now:HH:mm:ss} OnBossKilled failed: {ex}\n");
             }
             catch { }

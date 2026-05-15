@@ -54,8 +54,27 @@
         <GradientStop Color="#067DD3FC" Offset="1"/>
     </LinearGradientBrush>
 
-    <!-- Damage bar fill. Bright blue on dark theme. -->
+    <!-- Damage bar fill (Bar A — 누적 비율). Bright blue on dark theme. -->
     <SolidColorBrush x:Key="DamageBarBrush" Color="#553B82F6"/>
+    <!-- 본인 행 전용 막대 색 (Self overrides DamageBarBrush via DataTrigger). 녹색.
+         사용자가 자기 행을 한눈에 식별하도록 색을 분리. -->
+    <SolidColorBrush x:Key="SelfDamageBarBrush"     Color="#5522C55E"/>
+    <SolidColorBrush x:Key="SelfDamageBarEdgeBrush" Color="#CC22C55E"/>
+    <SolidColorBrush x:Key="SelfDpsLineBrush"       Color="#E022C55E"/>
+
+    <!-- Glass Track Meter (v0.1.2):
+         Bar A 외곽 막대는 누적 데미지 비율, Bar B 안쪽 라인은 현재 DPS 강도.
+         Glass track 은 row 안쪽 inset 컨테이너. -->
+    <SolidColorBrush x:Key="GlassTrackBgBrush"        Color="#1AFFFFFF"/>
+    <SolidColorBrush x:Key="GlassTrackBorderBrush"    Color="#26FFFFFF"/>
+    <SolidColorBrush x:Key="DamageBarEdgeBrush"       Color="#AA7DB8FF"/>
+    <SolidColorBrush x:Key="DpsIntensityLineBrush"    Color="#E07DD3FC"/>
+    <SolidColorBrush x:Key="TrailingGlowBrush"        Color="#557DB8FF"/>
+    <!-- Podium 좌측 stripe brushes for ranks 1/2/3. 4·5등+ 는 stripe 없음.
+         Self / primary-guess stripe 가 우선 (rank stripe 를 덮음). -->
+    <SolidColorBrush x:Key="PodiumGoldBrush"    Color="#FFD66B"/>
+    <SolidColorBrush x:Key="PodiumSilverBrush"  Color="#D6DCE5"/>
+    <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#D08A4B"/>
 
     <!-- Logo (AION2FUN wordmark) — cool blue family. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

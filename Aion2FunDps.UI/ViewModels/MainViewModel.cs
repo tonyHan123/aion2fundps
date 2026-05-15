@@ -59,6 +59,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string updateDownloadUrl = "";
     [ObservableProperty] private string updateHtmlUrl = "";
 
+    /// <summary>
+    /// 지분율 계산 모드 ("Party" 또는 "BossHp"). AppSettings 와 동기화.
+    /// "Party"  = 본인 / 파티 합 (합 100%)
+    /// "BossHp" = 본인 / 보스 HP 손실 (누수 있으면 합 100% 미만)
+    /// </summary>
+    [ObservableProperty] private string shareCalculationMode = "Party";
+
     [ObservableProperty] private string? currentDungeonName;
     public bool HasDungeon => !string.IsNullOrEmpty(CurrentDungeonName);
     partial void OnCurrentDungeonNameChanged(string? value) => OnPropertyChanged(nameof(HasDungeon));
@@ -114,6 +121,18 @@ public partial class MainViewModel : ObservableObject
         cp >= 1_000_000 ? $"{cp / 1_000_000.0:F1}M"
         : cp >= 1_000   ? $"{cp / 1_000.0:F1}k"
                         : cp.ToString("N0");
+
+    /// <summary>Compact damage format: 23,826,577 → "23.8M", 241,798 → "241.8K".
+    /// Used in the leaderboard rows so the columns don't blur into long digit walls. </summary>
+    private static string FormatCompact(long v) =>
+        v >= 1_000_000 ? $"{v / 1_000_000.0:F1}M"
+        : v >= 1_000   ? $"{v / 1_000.0:F1}K"
+                       : v.ToString("N0");
+
+    private static string FormatCompact(double v) =>
+        v >= 1_000_000 ? $"{v / 1_000_000.0:F1}M"
+        : v >= 1_000   ? $"{v / 1_000.0:F1}K"
+                       : ((long)v).ToString("N0");
 
     private void Refresh()
     {
@@ -246,8 +265,22 @@ public partial class MainViewModel : ObservableObject
 
         long topDamage = crew.FirstOrDefault().Damage;
         if (topDamage <= 0) topDamage = 1;
+        double topDps = crew.Count > 0 ? crew.Max(row => row.Dps) : 0;
+        if (topDps <= 0) topDps = 1;
         long totalCrewDamage = crew.Sum(row => row.Damage);
         if (totalCrewDamage <= 0) totalCrewDamage = 1;
+        // 지분율 분모 — 설정 모드에 따라 분기.
+        //   Party  : 파티 데미지 합 (기존, 합 100%)
+        //   BossHp : 보스 HP 손실. 측정 누수가 있으면 합이 100% 미만 가능.
+        // BossHp 모드여도 보스 HP 정보가 없으면 (idle / lobby) Party 모드로 폴백.
+        long bossHpLost = 0;
+        bool useBossHp = ShareCalculationMode == "BossHp"
+                      && bossSnap.FocusedMaxHp > 0
+                      && bossSnap.FocusedMaxHp > bossSnap.FocusedCurrentHp;
+        if (useBossHp)
+            bossHpLost = bossSnap.FocusedMaxHp - bossSnap.FocusedCurrentHp;
+        long shareDenominator = useBossHp ? bossHpLost : totalCrewDamage;
+        if (shareDenominator <= 0) shareDenominator = 1;
 
         // Resolve primary (registered self OR most-hits heuristic)
         var primary = _aggregator.ResolvePrimary();
@@ -294,8 +327,12 @@ public partial class MainViewModel : ObservableObject
         {
             topDamage = crew[0].Damage;
             if (topDamage <= 0) topDamage = 1;
+            topDps = crew.Max(row => row.Dps);
+            if (topDps <= 0) topDps = 1;
             totalCrewDamage = crew.Sum(row => row.Damage);
             if (totalCrewDamage <= 0) totalCrewDamage = 1;
+            shareDenominator = useBossHp ? bossHpLost : totalCrewDamage;
+            if (shareDenominator <= 0) shareDenominator = 1;
         }
 
         // Build new view-model state
@@ -398,12 +435,15 @@ public partial class MainViewModel : ObservableObject
             vm.ClassColorHex = JobClassDetector.GetColorHex(detectedClass);
             vm.TopSkillsTooltip = skillsTip;
             vm.TotalDamage = row.Damage;
+            vm.TotalDamageDisplay = FormatCompact(row.Damage);
             vm.Dps = row.Dps;
+            vm.DpsDisplay = FormatCompact(row.Dps);
             vm.HitCount = p.HitCount;
             vm.CritRate = p.CritRate;
             vm.BackAttackRate = p.BackAttackRate;
             vm.DamageBarPercent = (double)row.Damage / topDamage * 100;
-            vm.DamageSharePercent = (double)row.Damage / totalCrewDamage * 100;
+            vm.DpsBarPercent = row.Dps / topDps * 100;
+            vm.DamageSharePercent = (double)row.Damage / shareDenominator * 100;
             int cp = entry?.CombatPower ?? 0;
             vm.CombatPower = cp;
             vm.CombatPowerDisplay = cp > 0 ? FormatCombatPower(cp) : string.Empty;
@@ -453,11 +493,14 @@ public partial class MainViewModel : ObservableObject
             ph.ClassColorHex = JobClassDetector.GetColorHex(JobClass.Unknown);
             ph.TopSkillsTooltip = "첫 타격 대기 중…";
             ph.TotalDamage = 0;
+            ph.TotalDamageDisplay = "0";
             ph.Dps = 0;
+            ph.DpsDisplay = "0";
             ph.HitCount = 0;
             ph.CritRate = 0;
             ph.BackAttackRate = 0;
             ph.DamageBarPercent = 0;
+            ph.DpsBarPercent = 0;
             ph.DamageSharePercent = 0;
             if (wasNew)
                 LogPlaceholderTransition("SHOWN", bossTargetId, meRowExists);

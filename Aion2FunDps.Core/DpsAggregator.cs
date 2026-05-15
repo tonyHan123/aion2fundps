@@ -488,7 +488,16 @@ public sealed class DpsAggregator
                 }
             }
         }
-        if (linked is { } mc)
+        // 이미 등록된 mob_code 가 있으면 덮어쓰지 않는다.
+        // 사용자 보고 2026-05-15 (무의 요람): 던전의 ENCOUNTER_ANNOUNCEMENT 가 던전 대표
+        // 보스 (예: 고뇌하는 바카르마, 2311301) 의 mob_code 를 알리고, 실제로는 다른 보스
+        // (예: 다차원의 벨티라스 2311302, 엄숙한 발칸 2311303) 가 등장하는 던전에서
+        // SUMMON_SPAWN 으로 정확하게 등록된 보스별 mob_code 를 이 라인이 덮어써서
+        // (a) 모든 보스 이름이 "고뇌하는 바카르마" 로 표시되고 (b) mob_code 가 다 같아져서
+        // SameMobCodePhaseTransition 가드가 잘못 발동해 자동리셋이 안 되는 두 버그가 동시
+        // 발생했다. SUMMON_SPAWN 등록이 권위적이고, 이 fallback 은 SUMMON_SPAWN 이 못 잡은
+        // 경우에만 적용되어야 한다.
+        if (linked is { } mc && _entities.GetMobCode(bossId) == null)
             _entities.Register(bossId, mc);
 
         if (!AutoResetOnBoss)
@@ -543,7 +552,8 @@ public sealed class DpsAggregator
             _boss.RestoreEntity(bossId, snapshot.MaxHp, snapshot.CurrentHp);
 
         // Reset survives ResetCore — re-register the link so it persists into the new session.
-        if (_latestEncounterMobCode is { } mc2)
+        // 가드: SUMMON_SPAWN 이 이미 등록한 mob_code 가 있으면 덮어쓰지 않음 (line 491 과 같은 이유).
+        if (_latestEncounterMobCode is { } mc2 && _entities.GetMobCode(bossId) == null)
             _entities.Register(bossId, mc2);
     }
 

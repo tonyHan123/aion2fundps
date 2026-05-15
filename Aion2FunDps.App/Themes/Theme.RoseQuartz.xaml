@@ -81,6 +81,20 @@
 
     <!-- Damage bar — translucent raspberry. -->
     <SolidColorBrush x:Key="DamageBarBrush" Color="#55C73E72"/>
+    <!-- 본인 행 전용 — Rose Quartz 의 라즈베리. -->
+    <SolidColorBrush x:Key="SelfDamageBarBrush"     Color="#55801B3A"/>
+    <SolidColorBrush x:Key="SelfDamageBarEdgeBrush" Color="#CC801B3A"/>
+    <SolidColorBrush x:Key="SelfDpsLineBrush"       Color="#E0801B3A"/>
+
+    <!-- Glass Track Meter (v0.1.2) — Rose Quartz raspberry/rose palette. -->
+    <SolidColorBrush x:Key="GlassTrackBgBrush"        Color="#14000000"/>
+    <SolidColorBrush x:Key="GlassTrackBorderBrush"    Color="#22000000"/>
+    <SolidColorBrush x:Key="DamageBarEdgeBrush"       Color="#AADD7AA8"/>
+    <SolidColorBrush x:Key="DpsIntensityLineBrush"    Color="#E0C73E72"/>
+    <SolidColorBrush x:Key="TrailingGlowBrush"        Color="#55DD7AA8"/>
+    <SolidColorBrush x:Key="PodiumGoldBrush"    Color="#B8853F"/>
+    <SolidColorBrush x:Key="PodiumSilverBrush"  Color="#9A8B95"/>
+    <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#8B4A2E"/>
 
     <!-- Logo (AION2FUN wordmark) — pink-to-magenta gradient. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

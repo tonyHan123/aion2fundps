@@ -349,6 +349,7 @@ public partial class App : Application
             vm.WindowOpacity = Settings.WindowOpacity;
             vm.AutoResetOnBoss = Settings.AutoResetOnBoss;
             vm.IsCompact = Settings.IsCompact;
+            vm.ShareCalculationMode = Settings.ShareCalculationMode;
 
             Log("Showing window");
             window.Show();
@@ -436,9 +437,10 @@ public partial class App : Application
             }
             if (_mainWindow?.DataContext is MainViewModel vm)
             {
-                Settings.WindowOpacity   = vm.WindowOpacity;
-                Settings.AutoResetOnBoss = vm.AutoResetOnBoss;
-                Settings.IsCompact       = vm.IsCompact;
+                Settings.WindowOpacity         = vm.WindowOpacity;
+                Settings.AutoResetOnBoss       = vm.AutoResetOnBoss;
+                Settings.IsCompact             = vm.IsCompact;
+                Settings.ShareCalculationMode  = vm.ShareCalculationMode;
             }
             Settings.SelectedTheme = ThemeManager.CurrentThemeId;
             Settings.Save();

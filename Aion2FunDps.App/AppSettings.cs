@@ -27,6 +27,14 @@ public sealed class AppSettings
     public bool IsCompact { get; set; } = false;
 
     /// <summary>
+    /// 지분율 계산 기준.
+    ///   "Party" (기본): 내 데미지 / 파티 전체 데미지 합 → 합이 항상 100%
+    ///   "BossHp"      : 내 데미지 / 보스 HP 손실        → 측정 누수가 있으면 합이 100% 미만
+    /// 신뢰도 100% 일 때는 두 값이 동일. 누수가 있을 때만 차이.
+    /// </summary>
+    public string ShareCalculationMode { get; set; } = "Party";
+
+    /// <summary>
     /// User-customizable hotkey strings (e.g., "Ctrl+R", "Alt+M", "F8").
     /// Empty / null = no binding. Parsed by SettingsWindow when capturing
     /// input and by MainWindow when registering InputBindings on startup.

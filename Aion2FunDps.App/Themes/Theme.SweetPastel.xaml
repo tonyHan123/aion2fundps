@@ -84,6 +84,20 @@
 
     <!-- Damage bar — dusty rose to match the cream surface. -->
     <SolidColorBrush x:Key="DamageBarBrush" Color="#55B27290"/>
+    <!-- 본인 행 전용 — Sweet Pastel 의 깊은 로즈. -->
+    <SolidColorBrush x:Key="SelfDamageBarBrush"     Color="#55793040"/>
+    <SolidColorBrush x:Key="SelfDamageBarEdgeBrush" Color="#CC793040"/>
+    <SolidColorBrush x:Key="SelfDpsLineBrush"       Color="#E0793040"/>
+
+    <!-- Glass Track Meter (v0.1.2) — pastel-warm palette. -->
+    <SolidColorBrush x:Key="GlassTrackBgBrush"        Color="#14000000"/>
+    <SolidColorBrush x:Key="GlassTrackBorderBrush"    Color="#1F000000"/>
+    <SolidColorBrush x:Key="DamageBarEdgeBrush"       Color="#AAD68FA8"/>
+    <SolidColorBrush x:Key="DpsIntensityLineBrush"    Color="#E0B27290"/>
+    <SolidColorBrush x:Key="TrailingGlowBrush"        Color="#55D68FA8"/>
+    <SolidColorBrush x:Key="PodiumGoldBrush"    Color="#C7984B"/>
+    <SolidColorBrush x:Key="PodiumSilverBrush"  Color="#A8A09A"/>
+    <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#9F6A3C"/>
 
     <!-- Logo (AION2FUN wordmark) — warm rose family for the cream theme. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

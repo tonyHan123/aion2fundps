@@ -88,6 +88,56 @@
                             Background="{DynamicResource DividerBrush}"
                             Margin="0,16,0,16"/>
 
+                    <TextBlock Text="지분율 계산 방식"
+                               FontFamily="{DynamicResource UiFont}"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource MutedBrush}"
+                               Margin="0,0,0,8"/>
+
+                    <RadioButton x:Name="SharePartyRadio"
+                                 GroupName="ShareMode"
+                                 Checked="ShareModeRadio_Checked"
+                                 Tag="Party"
+                                 Margin="0,4,0,4"
+                                 Foreground="{DynamicResource TextBrush}"
+                                 FontFamily="{DynamicResource UiFont}"
+                                 FontSize="12">
+                        <StackPanel>
+                            <TextBlock Text="파티 데미지 합 기준"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}"/>
+                            <TextBlock Text="본인 데미지 / 파티 전원 합계. 항상 합이 100%."
+                                       Foreground="{DynamicResource MutedBrush}"
+                                       FontSize="11"
+                                       Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </RadioButton>
+
+                    <RadioButton x:Name="ShareBossHpRadio"
+                                 GroupName="ShareMode"
+                                 Checked="ShareModeRadio_Checked"
+                                 Tag="BossHp"
+                                 Margin="0,4,0,4"
+                                 Foreground="{DynamicResource TextBrush}"
+                                 FontFamily="{DynamicResource UiFont}"
+                                 FontSize="12">
+                        <StackPanel>
+                            <TextBlock Text="보스 HP 손실 기준"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}"/>
+                            <TextBlock Text="본인 데미지 / 보스가 실제로 깎인 양. 측정 누수가 있으면 합이 100% 미만."
+                                       Foreground="{DynamicResource MutedBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </RadioButton>
+
+                    <Border Height="1"
+                            Background="{DynamicResource DividerBrush}"
+                            Margin="0,16,0,16"/>
+
                     <TextBlock Text="단축키"
                                FontFamily="{DynamicResource UiFont}"
                                FontSize="11"

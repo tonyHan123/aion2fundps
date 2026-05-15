@@ -62,6 +62,12 @@ public partial class SettingsWindow : Window
         ResetHotkeyBtn.Content = HotkeyDisplay(settings.ResetHotkey);
         MinimizeHotkeyBtn.Content = HotkeyDisplay(settings.MinimizeHotkey);
 
+        // Reflect persisted share-calc mode on the radio buttons.
+        if (settings.ShareCalculationMode == "BossHp")
+            ShareBossHpRadio.IsChecked = true;
+        else
+            SharePartyRadio.IsChecked = true;
+
         // Capture key presses at the window level when in capture mode so
         // keys like F1-F12 aren't swallowed by the focused button's default
         // handling. Bound at PreviewKeyDown so we see the raw event before
@@ -83,6 +89,26 @@ public partial class SettingsWindow : Window
     {
         var about = new AboutWindow { Owner = this };
         about.ShowDialog();
+    }
+
+    /// <summary>
+    /// 지분율 계산 방식 라디오 → AppSettings + MainViewModel 동기화.
+    /// 즉시 반영되어 다음 Refresh tick 에서 새 분모로 % 계산.
+    /// </summary>
+    private void ShareModeRadio_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton rb || rb.Tag is not string mode) return;
+        var settings = App.Instance.Settings;
+        if (settings.ShareCalculationMode == mode) return;
+
+        settings.ShareCalculationMode = mode;
+        settings.Save();
+
+        if (Owner is MainWindow mw
+            && mw.DataContext is Aion2FunDps.UI.ViewModels.MainViewModel vm)
+        {
+            vm.ShareCalculationMode = mode;
+        }
     }
 
     private void ThemeRadio_Checked(object sender, RoutedEventArgs e)

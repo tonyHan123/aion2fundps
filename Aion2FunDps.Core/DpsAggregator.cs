@@ -133,6 +133,24 @@ public sealed class DpsAggregator
     /// 각성전 case: 3 phases → 3 ResetCore in 5min wiped accumulated DPS).
     /// </summary>
     private DateTime? _lastBossKilledAt;
+
+    /// <summary>
+    /// Cold-start self proxy 상태 머신.
+    /// 던전 도중 미터 시작 시 SELF_NICK 패킷이 안 오는 케이스 — 첫 데미지의 actor_id 를
+    /// 임시 self proxy 로 채택 → 후속 닉네임 신호 (SELF_NICK / PARTY_ASSEMBLY 단일
+    /// unmapped) 도착 시 canonical 로 merge → 둘 다 안 오면 timeout 으로 폐기.
+    ///
+    /// proxy 는 확정 self 가 아님: 두 PlayerStats 행이 갈라지는 걸 막기 위해 후속
+    /// 검증 시점에만 merge. raw 와 canonical 이 다르면 PlayerStats 데미지/스킬 통합
+    /// + NicknameRegistry alias 등록 + _partyMembers 갱신.
+    /// </summary>
+    private int? _proxySelfActorId;
+    private DateTime? _proxyAdoptedAt;
+    /// <summary>120초 동안 닉네임 매칭 신호 없으면 proxy 폐기. 결과창 PARTY_ASSEMBLY
+    /// 가 보통 보스 처치 직후 (30초 이내) 도착하므로 120초면 충분히 여유.</summary>
+    private static readonly TimeSpan ProxyTimeout = TimeSpan.FromSeconds(120);
+    /// <summary>Proxy 진단 로그 (cold-start 흐름 추적 — 사용자 보고 시 단서).</summary>
+    public string? ProxyDebugLogPath { get; set; }
     // Tuning: 60s comfortably covers 각성전 phase-transition cinematics
     // (kill → spawn-spawn → cinematic → first damage observed at 26s in
     // the 2026-05-04 wire trace) without erroneously merging genuinely
@@ -324,6 +342,9 @@ public sealed class DpsAggregator
     {
         lock (_stateLock)
         {
+        // Cold-start proxy 만료 — 120 초 동안 닉네임 매칭 없으면 폐기.
+        TryExpireProxy();
+
         // Diagnostic phantom sweep runs unconditionally — it only logs and
         // doesn't mutate roster state.
         SweepLiveStatusPhantoms();
@@ -440,12 +461,21 @@ public sealed class DpsAggregator
 
     private void OnBossKilled(int bossId)
     {
-        // Freeze only makes sense in auto-reset mode where each boss kill is a
-        // self-contained fight whose final stats users want to inspect post-kill.
-        // In cumulative mode (AutoResetOnBoss = false) users want continuous
-        // multi-boss tracking — freezing here would leave the DPS pinned at the
-        // first kill while TotalDamage keeps growing, which is the inconsistent
-        // state users reported as confusing.
+        // LastKilledBossId / _lastBossKilledAt 는 항상 설정. 이 값들은 보스 처치 후
+        // 결과창 / 던전→로비 id-space 전환 동안 멤버 보존(EvictStaleMembers,
+        // PARTY_LEFT wipe gate) 의 기준점이라 cumulative 모드(AutoResetOnBoss=false)
+        // 에서도 반드시 박혀야 함.
+        //
+        // 미박힘 케이스의 실제 증상(2026-05-17 로그 확인):
+        //   3보스 처치 → 5분 후 던전→로비 전환에서 self 가 새 lobby id(5950)로
+        //   재발급, 던전 id(46569) 에 누적된 PlayerStats 가 고아화 → "전부 0".
+        //   LastKilledBossId 가 있었다면 PARTY_LEFT 무시되고 멤버 유지됨.
+        LastKilledBossId = bossId;
+        _lastBossKilledAt = DateTime.UtcNow;
+
+        // Freeze/pin 은 auto-reset 모드에서만. cumulative 모드는 다음 보스로 누적이
+        // 계속되어야 하므로 여기서 freeze 하면 DPS 가 첫 처치 시점에 박힌 채로
+        // TotalDamage 만 증가해 사용자가 혼란스러워한 inconsistent state 가 됨.
         if (!AutoResetOnBoss) return;
 
         // Snapshot every player's current rolling DPS so the displayed number stays
@@ -457,14 +487,6 @@ public sealed class DpsAggregator
             p.FreezeDps();
             p.FreezeDpsToTarget(bossId);
         }
-
-        // Pin the damage column to this boss until the next pull. Without
-        // this, BossTracker.UpdateFocus shifts focus to whatever boss-grade
-        // entity is still "alive" in _entities (server reused jobbed entity
-        // slots → 나트하라 phase entities) and the leaderboard's damage
-        // numbers swap to those entities' tiny per-id totals.
-        LastKilledBossId = bossId;
-        _lastBossKilledAt = DateTime.UtcNow;
     }
 
     private void OnNewBossDetected(int bossId)
@@ -566,6 +588,77 @@ public sealed class DpsAggregator
                 $"{DateTime.Now:HH:mm:ss.fff} {(reset ? "→ RESET_FIRED   " : "→ RESET_SKIPPED ")} mobId={bossId} reason={reason}\n");
         }
         catch { }
+    }
+
+    /// <summary>Cold-start self proxy 진단 로그. 4가지 phase: ADOPTED/PROMOTED/MERGED/DISCARDED.</summary>
+    private void LogProxyDecision(string phase, int rawActor, string detail)
+    {
+        if (string.IsNullOrEmpty(ProxyDebugLogPath)) return;
+        try
+        {
+            System.IO.File.AppendAllText(ProxyDebugLogPath,
+                $"{DateTime.Now:HH:mm:ss.fff} {phase,-16} raw_actor={rawActor} {detail}\n");
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// SelfUserId 가 새로 식별됐을 때 proxy → canonical 병합.
+    /// PlayerStats 데이터 (TotalDamage / 스킬 / 히트 등) 를 canonical 로 이전 + NicknameRegistry alias
+    /// 등록 + _partyMembers 갱신. 멱등 (proxy 없거나 self 미식별이면 no-op).
+    /// </summary>
+    private void TryMergeProxyToSelf()
+    {
+        if (_proxySelfActorId is not int proxy) return;
+        if (_registry.SelfUserId is not int canonical) return;
+        if (proxy == canonical)
+        {
+            // 같은 id — merge 불필요, proxy state 만 정리
+            LogProxyDecision("PROXY_MERGED", proxy, $"canonical={canonical} reason=SAME_ID");
+            _proxySelfActorId = null;
+            _proxyAdoptedAt = null;
+            return;
+        }
+
+        // 1. alias 등록 — 이후 proxy id 로 들어오는 damage 도 canonical 로 해소
+        _registry.AddAlias(proxy, canonical);
+
+        // 2. PlayerStats 데이터 이전
+        var proxyStats = Current.GetExisting(proxy);
+        long transferred = proxyStats?.TotalDamage ?? 0;
+        if (proxyStats != null)
+        {
+            var canonicalStats = Current.GetOrCreate(canonical);
+            canonicalStats.MergeFrom(proxyStats);
+            Current.Remove(proxy);
+        }
+
+        // 3. _partyMembers: proxy 제거, canonical 추가
+        _partyMembers.Remove(proxy);
+        if (!_partyMembers.Contains(canonical)) _partyMembers.Add(canonical);
+        _roomTracker.AddLiveMember(canonical);
+
+        LogProxyDecision("PROXY_MERGED", proxy, $"canonical={canonical} dmg_transferred={transferred}");
+
+        _proxySelfActorId = null;
+        _proxyAdoptedAt = null;
+    }
+
+    /// <summary>
+    /// 120 초 동안 닉네임 확인 신호 없으면 proxy 폐기. EvictStaleMembers tick 에서 호출.
+    /// PlayerStats / _partyMembers 정리해서 "잘못 잡힌 self" 가 영영 남는 것 방지.
+    /// </summary>
+    private void TryExpireProxy()
+    {
+        if (_proxySelfActorId is not int proxy) return;
+        if (_proxyAdoptedAt is not DateTime adopted) return;
+        if (DateTime.UtcNow - adopted < ProxyTimeout) return;
+
+        LogProxyDecision("PROXY_DISCARDED", proxy, $"reason=TIMEOUT elapsed={(int)(DateTime.UtcNow - adopted).TotalSeconds}s");
+        _partyMembers.Remove(proxy);
+        Current.Remove(proxy);
+        _proxySelfActorId = null;
+        _proxyAdoptedAt = null;
     }
 
     private DateTime _lastDamageLogAt = DateTime.MinValue;
@@ -760,20 +853,39 @@ public sealed class DpsAggregator
                     // in-_partyMembers branch), and damage accumulates
                     // visibly. The boss-mode + focused-target gate keeps
                     // PvP / stray mob damage out.
-                    if (_boss.IsBossMode
-                        && _boss.FocusedEntityId == dmg.TargetId
+                    // Cold-start gate: 기존 IsBossMode 는 mob_code 가 boss 로 확실히
+                    // 등록된 경우만 true → SUMMON_SPAWN / ENCOUNTER_ANNOUNCEMENT 못 받은
+                    // 던전 도중 시작 시 보스 21M HP 라도 false. LooksLikeActiveBossTarget
+                    // 은 HP fallback + 데미지 게이트로 cold-start 케이스도 통과시킴.
+                    // 정통 boss flow (banner / kill / reset) 는 IsBossMode 그대로 사용.
+                    //
+                    // 제외 게이트:
+                    //   - 소환수 / 펫: SummonRepository 에 owner 매핑 있으면 player actor 아님
+                    //   - mob_code 있는 actor: EntityRegistry 등록된 entity = 몹/펫이지 player 아님
+                    if (_boss.LooksLikeActiveBossTarget(dmg.TargetId)
                         && !_partyMembers.Contains(actor)
-                        && _registry.GetEntry(actor) == null)
+                        && _registry.GetEntry(actor) == null
+                        && !_summons.IsSummon(rawActor)
+                        && _entities.GetMobCode(rawActor) == null
+                        && _entities.GetMobCode(actor) == null)
                     {
                         bool flavorA = _registry.SelfUserId is int selfCanonical
                             && actor != selfCanonical
                             && (Current.GetExisting(selfCanonical)?.TotalDamage ?? 0) == 0;
                         bool flavorB = _registry.SelfUserId == null
-                            && _partyMembers.Count == 0;
+                            && _partyMembers.Count == 0
+                            && _proxySelfActorId == null;  // 이미 proxy 채택했으면 새로 X
                         if (flavorA || flavorB)
                         {
                             _partyMembers.Add(actor);
                             _roomTracker.AddLiveMember(actor);
+                            if (flavorB)
+                            {
+                                _proxySelfActorId = actor;
+                                _proxyAdoptedAt = DateTime.UtcNow;
+                                LogProxyDecision("PROXY_ADOPTED", actor,
+                                    $"target={dmg.TargetId} maxHp={_boss.FocusedMaxHp ?? 0} flavor=NO_SELF_NICK");
+                            }
                         }
                     }
                 }
@@ -1222,6 +1334,10 @@ public sealed class DpsAggregator
                 LinkFocusedBossToEncounter(enc.MobCode);
                 break;
         }
+        // OnEvent 의 모든 분기 처리 후 — 닉네임/파티/데미지 어느 이벤트라도 SelfUserId 가
+        // 새로 식별됐을 수 있으므로 proxy 가 있으면 merge 시도. 멱등이라 매 이벤트마다
+        // 불러도 비용 ~0 (proxy 없으면 즉시 return).
+        TryMergeProxyToSelf();
         }
     }
 

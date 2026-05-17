@@ -3,8 +3,11 @@
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Diagnostics;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Aion2FunDps.App;
 
@@ -30,7 +33,13 @@ public sealed class UpdateChecker
 
     private static readonly HttpClient _http = CreateClient();
 
-    public sealed record UpdateInfo(string Version, string DownloadUrl, string HtmlUrl);
+    public sealed record UpdateInfo(string Version, string DownloadUrl, string HtmlUrl, string? ExpectedSha256);
+
+    // Release body 안에 적어둔 "SHA256: ABCDEF..." 형태 64자리 헥스 패턴.
+    // 백틱 / 공백 둘러쌈 허용. 대소문자 무시.
+    private static readonly Regex Sha256InBodyRegex = new(
+        @"SHA256[:\s`]*([0-9A-Fa-f]{64})",
+        RegexOptions.Compiled);
 
     /// <summary>
     /// Returns the latest release if it is strictly newer than the current
@@ -75,7 +84,16 @@ public sealed class UpdateChecker
                 ? htmlEl.GetString() ?? ""
                 : "";
 
-            return new UpdateInfo(tag, downloadUrl, htmlUrl);
+            // Release body 에서 SHA256 추출 (있으면).
+            // 기대 형식: "SHA256: `FA4EBB1C...`" — Release Description 의 다운로드 섹션에 적힌 해시.
+            string? expectedSha256 = null;
+            if (root.TryGetProperty("body", out var bodyEl) && bodyEl.GetString() is string body)
+            {
+                var match = Sha256InBodyRegex.Match(body);
+                if (match.Success) expectedSha256 = match.Groups[1].Value.ToUpperInvariant();
+            }
+
+            return new UpdateInfo(tag, downloadUrl, htmlUrl, expectedSha256);
         }
         catch
         {
@@ -92,7 +110,7 @@ public sealed class UpdateChecker
     /// deliberately do not overwrite the running executable from within
     /// the running executable.
     /// </summary>
-    public static async Task<string?> DownloadAsync(string url, IProgress<double>? progress = null, CancellationToken token = default)
+    public static async Task<string?> DownloadAsync(string url, string? expectedSha256 = null, IProgress<double>? progress = null, CancellationToken token = default)
     {
         if (string.IsNullOrWhiteSpace(url)) return null;
         try
@@ -118,11 +136,106 @@ public sealed class UpdateChecker
                 if (total is long t && t > 0)
                     progress?.Report((double)read / t);
             }
+            await fs.FlushAsync(token).ConfigureAwait(false);
+            fs.Close();
+
+            // 무결성 검증: 기대 해시가 있으면 다운로드 파일 SHA256 와 비교.
+            // 일치 안 하면 (MITM / 손상 / 잘못된 Release body) 파일 삭제 후 실패.
+            // 기대 해시가 null 이면 (Release body 에 SHA256 명시 안 됨) 검증 스킵.
+            if (!string.IsNullOrWhiteSpace(expectedSha256))
+            {
+                string actualSha256 = await ComputeSha256Async(dst, token).ConfigureAwait(false);
+                if (!string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    try { File.Delete(dst); } catch { }
+                    return null;
+                }
+            }
             return dst;
         }
         catch
         {
             return null;
+        }
+    }
+
+    private static async Task<string> ComputeSha256Async(string filePath, CancellationToken token)
+    {
+        await using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+        using var sha = SHA256.Create();
+        var hash = await sha.ComputeHashAsync(fs, token).ConfigureAwait(false);
+        return Convert.ToHexString(hash);
+    }
+
+    /// <summary>
+    /// Starts a tiny out-of-process replacement step, then returns immediately.
+    /// The caller should close the app right after this returns true. The
+    /// updater waits for the current process to exit, backs up the old exe,
+    /// copies the downloaded exe into place, and relaunches the meter.
+    /// </summary>
+    public static bool TryApplyAndRestart(string downloadedExePath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(downloadedExePath) || !File.Exists(downloadedExePath))
+                return false;
+
+            string? currentExePath = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(currentExePath) || !File.Exists(currentExePath))
+                return false;
+
+            string updateDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "aion2fundps", "updates");
+            Directory.CreateDirectory(updateDir);
+
+            string scriptPath = Path.Combine(updateDir, "apply-update.cmd");
+            string logPath = Path.Combine(updateDir, "apply-update.log");
+            string backupPath = currentExePath + ".bak";
+            int pid = Process.GetCurrentProcess().Id;
+
+            File.WriteAllLines(scriptPath, new[]
+            {
+                "@echo off",
+                "setlocal",
+                $"set \"SRC={downloadedExePath}\"",
+                $"set \"DST={currentExePath}\"",
+                $"set \"BAK={backupPath}\"",
+                $"set \"LOG={logPath}\"",
+                $"set \"PID={pid}\"",
+                "echo === %DATE% %TIME% apply update === >> \"%LOG%\"",
+                ":wait_for_exit",
+                "tasklist /FI \"PID eq %PID%\" 2>nul | find \"%PID%\" >nul",
+                "if not errorlevel 1 (",
+                "  timeout /t 1 /nobreak >nul",
+                "  goto wait_for_exit",
+                ")",
+                "if exist \"%DST%\" copy /Y \"%DST%\" \"%BAK%\" >> \"%LOG%\" 2>&1",
+                "copy /Y \"%SRC%\" \"%DST%\" >> \"%LOG%\" 2>&1",
+                "if errorlevel 1 (",
+                "  echo copy failed, attempting rollback >> \"%LOG%\"",
+                "  if exist \"%BAK%\" copy /Y \"%BAK%\" \"%DST%\" >> \"%LOG%\" 2>&1",
+                "  start \"\" \"%DST%\"",
+                "  exit /b 1",
+                ")",
+                "echo update applied >> \"%LOG%\"",
+                "start \"\" \"%DST%\"",
+                "del \"%~f0\" >nul 2>nul",
+            });
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c \"\"{scriptPath}\"\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            });
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 

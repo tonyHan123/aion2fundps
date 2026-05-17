@@ -92,6 +92,19 @@ public sealed class NicknameRegistry
         _aliases.TryGetValue(entityId, out var c) ? c : null;
 
     /// <summary>
+    /// 외부 호출자가 raw entity_id 를 기존 canonical 에 alias 로 등록한다.
+    /// Cold-start self proxy → 후속 닉네임 확인 시점에 raw actor_id 를 self
+    /// canonical 에 묶기 위한 용도. 정상 Register 흐름 (닉네임 패킷 기반) 만으로는
+    /// 닉네임 없는 raw actor 가 canonical 에 묶일 길이 없어서 별도 함수가 필요.
+    /// 멱등 (같은 id 재호출 안전).
+    /// </summary>
+    public void AddAlias(int rawId, int canonicalId)
+    {
+        if (rawId == canonicalId) return;
+        _aliases[rawId] = canonicalId;
+    }
+
+    /// <summary>
     /// Registers a nickname-bearing event (SELF_NICK / OTHER_NICK / op=0297 /
     /// op=01 92 LiveStatus / op=6ae2 raid bulk) and returns the canonical
     /// entity_id under which this player's stats live.

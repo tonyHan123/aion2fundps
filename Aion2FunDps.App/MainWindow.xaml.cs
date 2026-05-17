@@ -291,7 +291,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(vm.UpdateDownloadUrl)) return;
 
         var confirm = MessageBox.Show(
-            $"새 버전 {vm.UpdateVersionLabel} 을 다운로드하시겠어요?\n\n다운로드 후 미터를 종료하고 새 파일로 교체해 주시면 됩니다.",
+            $"새 버전 {vm.UpdateVersionLabel} 을 지금 적용할까요?\n\n확인을 누르면 다운로드 후 미터가 자동으로 재시작됩니다.",
             "aion2fundps 업데이트",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Information);
@@ -302,21 +302,30 @@ public partial class MainWindow : Window
         {
             UpdateBtn.IsEnabled = false;
             UpdateBtn.Content = "다운로드 중…";
-            var path = await UpdateChecker.DownloadAsync(vm.UpdateDownloadUrl);
+            // Release body 에서 추출한 기대 SHA256 을 전달. 다운로드 후 자동 검증.
+            // 해시가 없으면 (Release body 에 적혀있지 않은 경우) 검증 스킵.
+            string? expected = string.IsNullOrWhiteSpace(vm.UpdateExpectedSha256) ? null : vm.UpdateExpectedSha256;
+            var path = await UpdateChecker.DownloadAsync(vm.UpdateDownloadUrl, expected);
             if (path is null)
             {
-                MessageBox.Show(
-                    "다운로드에 실패했습니다. 네트워크를 확인하시고, 또는 GitHub Releases 페이지에서 직접 받아주세요.",
-                    "aion2fundps",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                string msg = expected != null
+                    ? "다운로드 후 무결성 검증에 실패했거나 네트워크 오류가 발생했습니다.\n파일이 변조되었을 수 있으니 GitHub Releases 페이지에서 직접 받아주세요."
+                    : "다운로드에 실패했습니다. 네트워크를 확인하시고, 또는 GitHub Releases 페이지에서 직접 받아주세요.";
+                MessageBox.Show(msg, "aion2fundps", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            var done = MessageBox.Show(
-                "다운로드가 완료되었습니다.\n\n탐색기에서 새 파일을 띄워 드릴게요. 미터를 종료한 뒤 기존 파일을 새 파일로 덮어쓰고 더블클릭으로 실행해 주세요.",
+            UpdateBtn.Content = "적용 준비 중…";
+            if (UpdateChecker.TryApplyAndRestart(path))
+            {
+                Close();
+                return;
+            }
+
+            MessageBox.Show(
+                "자동 적용을 시작하지 못했습니다.\n\n대신 탐색기에서 새 파일을 띄워 드릴게요. 이번 한 번만 수동으로 교체해 주세요.",
                 "aion2fundps 업데이트",
                 MessageBoxButton.OK,
-                MessageBoxImage.Information);
+                MessageBoxImage.Warning);
             try
             {
                 System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");

@@ -27,6 +27,10 @@
     <!-- Content accents -->
     <SolidColorBrush x:Key="GoldBrush"          Color="#E5C97A"/>
     <SolidColorBrush x:Key="GoldDimBrush"       Color="#A89058"/>
+    <!-- 전투력 컬럼 전용 색. 다크 테마에서는 골드 톤이 잘 식별됨. -->
+    <SolidColorBrush x:Key="CombatPowerBrush"   Color="#E5C97A"/>
+    <!-- DPS 컬럼 전용. 다크 테마에서는 시안이 가장 강조됨. -->
+    <SolidColorBrush x:Key="DpsBrush"           Color="#7DD3FC"/>
     <SolidColorBrush x:Key="CyanBrush"          Color="#7DD3FC"/>
     <SolidColorBrush x:Key="AmberBrush"         Color="#F4A640"/>
     <SolidColorBrush x:Key="AmberSoftBrush"     Color="#1AF4A640"/>
@@ -75,6 +79,25 @@
     <SolidColorBrush x:Key="PodiumGoldBrush"    Color="#FFD66B"/>
     <SolidColorBrush x:Key="PodiumSilverBrush"  Color="#D6DCE5"/>
     <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#D08A4B"/>
+
+    <!-- Rank-별 시각 식별 막대 (Bar A) + edge highlight.
+         deep navy 배경에 대비되는 밝은 채도 8색. alpha 0x55 (bar) / 0xCC (edge). -->
+    <SolidColorBrush x:Key="RankBar1Brush"      Color="#55FFD66B"/>
+    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#CCFFD66B"/>
+    <SolidColorBrush x:Key="RankBar2Brush"      Color="#555BC0DE"/>
+    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#CC5BC0DE"/>
+    <SolidColorBrush x:Key="RankBar3Brush"      Color="#55F06292"/>
+    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#CCF06292"/>
+    <SolidColorBrush x:Key="RankBar4Brush"      Color="#559CCC65"/>
+    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#CC9CCC65"/>
+    <SolidColorBrush x:Key="RankBar5Brush"      Color="#55FF8A65"/>
+    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#CCFF8A65"/>
+    <SolidColorBrush x:Key="RankBar6Brush"      Color="#55BA68C8"/>
+    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#CCBA68C8"/>
+    <SolidColorBrush x:Key="RankBar7Brush"      Color="#55FFEE58"/>
+    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#CCFFEE58"/>
+    <SolidColorBrush x:Key="RankBar8Brush"      Color="#5590A4AE"/>
+    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#CC90A4AE"/>
 
     <!-- Logo (AION2FUN wordmark) — cool blue family. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

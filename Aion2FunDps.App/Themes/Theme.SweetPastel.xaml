@@ -42,6 +42,10 @@
          Pulled toward antique brass to match the muted surface. -->
     <SolidColorBrush x:Key="GoldBrush"          Color="#A67E4F"/>
     <SolidColorBrush x:Key="GoldDimBrush"       Color="#7E5D38"/>
+    <!-- 전투력 컬럼 — cream 배경에 deep teal 이 가장 또렷. -->
+    <SolidColorBrush x:Key="CombatPowerBrush"   Color="#2C5F75"/>
+    <!-- DPS — cream 배경에서 deep teal-blue 가 굵게 떠오름. -->
+    <SolidColorBrush x:Key="DpsBrush"           Color="#0A6E94"/>
 
     <!-- Pink accent in CyanBrush slot — DPS column / primary callout. Dustier
          than the previous #D17C9D so it reads as "theme color" without the
@@ -98,6 +102,25 @@
     <SolidColorBrush x:Key="PodiumGoldBrush"    Color="#C7984B"/>
     <SolidColorBrush x:Key="PodiumSilverBrush"  Color="#A8A09A"/>
     <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#9F6A3C"/>
+
+    <!-- Rank-별 막대 — cream/taupe (#E8DAD8) 배경에 대비되는 깊은 채도 톤.
+         밝은 BG 에는 어두운 막대가 정확히 식별됨. alpha 0x55 / 0xCC. -->
+    <SolidColorBrush x:Key="RankBar1Brush"      Color="#55C44569"/>  <!-- deep rose -->
+    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#CCC44569"/>
+    <SolidColorBrush x:Key="RankBar2Brush"      Color="#554A7C8E"/>  <!-- teal-blue -->
+    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#CC4A7C8E"/>
+    <SolidColorBrush x:Key="RankBar3Brush"      Color="#557D4A8E"/>  <!-- plum -->
+    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#CC7D4A8E"/>
+    <SolidColorBrush x:Key="RankBar4Brush"      Color="#555C8A4F"/>  <!-- forest -->
+    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#CC5C8A4F"/>
+    <SolidColorBrush x:Key="RankBar5Brush"      Color="#55C46B2C"/>  <!-- rust -->
+    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#CCC46B2C"/>
+    <SolidColorBrush x:Key="RankBar6Brush"      Color="#553D5A80"/>  <!-- indigo -->
+    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#CC3D5A80"/>
+    <SolidColorBrush x:Key="RankBar7Brush"      Color="#558B5A2B"/>  <!-- brown -->
+    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#CC8B5A2B"/>
+    <SolidColorBrush x:Key="RankBar8Brush"      Color="#554A4A4A"/>  <!-- charcoal -->
+    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#CC4A4A4A"/>
 
     <!-- Logo (AION2FUN wordmark) — warm rose family for the cream theme. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

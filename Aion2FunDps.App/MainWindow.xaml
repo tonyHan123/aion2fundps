@@ -117,7 +117,7 @@
                                 Margin="0,0,8,0"/>
                         <Button x:Name="UpdateBtn" Click="UpdateBtn_Click"
                                 Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVis}}"
-                                ToolTip="{Binding UpdateVersionLabel, StringFormat=새 버전 {0} — 클릭하여 다운로드}"
+                                ToolTip="{Binding UpdateVersionLabel, StringFormat=새 버전 {0} — 클릭하여 업데이트}"
                                 Height="22" Padding="6,0" Background="Transparent"
                                 Foreground="{DynamicResource AmberBrush}" BorderThickness="0"
                                 FontSize="11" FontWeight="Bold" VerticalAlignment="Center">
@@ -287,7 +287,7 @@
                                    Opacity="0.95"/>
                     </StackPanel>
                     <TextBlock Grid.Column="2" Text="전투력"
-                               Foreground="{DynamicResource GoldBrush}"
+                               Foreground="{DynamicResource CombatPowerBrush}"
                                FontFamily="{DynamicResource MonoFont}"
                                FontSize="11" FontWeight="SemiBold"
                                TextAlignment="Right"
@@ -300,7 +300,7 @@
                                TextAlignment="Right"
                                VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="5" Text="DPS"
-                               Foreground="{DynamicResource CyanBrush}"
+                               Foreground="{DynamicResource DpsBrush}"
                                FontFamily="{DynamicResource MonoFont}"
                                FontSize="12" FontWeight="Bold"
                                TextAlignment="Right"
@@ -395,16 +395,37 @@
                                         ClipToBounds="True">
                                     <Grid>
                                         <!-- Bar A: 누적 데미지 비율 막대.
-                                             기본 = 랭크별 시그니처 색 (디자이너 8색 팔레트, alpha 0x55)
-                                             → 1·2·3·4 등이 서로 다른 색이라 한눈에 식별.
-                                             본인 행 → SelfDamageBarBrush 로 swap (테마별 자기 색). -->
+                                             기본 = 랭크별 테마-종속 brush (Theme.*.xaml 에서 정의)
+                                             → 각 테마 BG 와 식별성 잘 분리되는 팔레트 자동 적용.
+                                             본인 행 → SelfDamageBarBrush 로 swap. -->
                                         <Border CornerRadius="2"
                                                 HorizontalAlignment="Left"
-                                                VerticalAlignment="Stretch"
-                                                Background="{Binding Rank, Converter={StaticResource RankToBarBrush}}">
+                                                VerticalAlignment="Stretch">
                                             <Border.Style>
                                                 <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="{DynamicResource RankBar8Brush}"/>
                                                     <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Rank}" Value="1">
+                                                            <Setter Property="Background" Value="{DynamicResource RankBar1Brush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Rank}" Value="2">
+                                                            <Setter Property="Background" Value="{DynamicResource RankBar2Brush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Rank}" Value="3">
+                                                            <Setter Property="Background" Value="{DynamicResource RankBar3Brush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Rank}" Value="4">
+                                                            <Setter Property="Background" Value="{DynamicResource RankBar4Brush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Rank}" Value="5">
+                                                            <Setter Property="Background" Value="{DynamicResource RankBar5Brush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Rank}" Value="6">
+                                                            <Setter Property="Background" Value="{DynamicResource RankBar6Brush}"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Rank}" Value="7">
+                                                            <Setter Property="Background" Value="{DynamicResource RankBar7Brush}"/>
+                                                        </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsSelf}" Value="True">
                                                             <Setter Property="Background" Value="{DynamicResource SelfDamageBarBrush}"/>
                                                         </DataTrigger>
@@ -418,12 +439,33 @@
                                                              RelativeSource="{RelativeSource AncestorType=Border}"/>
                                                 </MultiBinding>
                                             </Border.Width>
-                                            <!-- Edge highlight: 2px 랭크 색 stripe (alpha 0xCC) at 우측 끝. -->
-                                            <Rectangle Width="2" HorizontalAlignment="Right"
-                                                       Fill="{Binding Rank, Converter={StaticResource RankToEdgeBrush}}">
+                                            <!-- Edge highlight: 2px 랭크 색 stripe at 우측 끝. 같은 테마-종속 swap 패턴. -->
+                                            <Rectangle Width="2" HorizontalAlignment="Right">
                                                 <Rectangle.Style>
                                                     <Style TargetType="Rectangle">
+                                                        <Setter Property="Fill" Value="{DynamicResource RankBar8EdgeBrush}"/>
                                                         <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Rank}" Value="1">
+                                                                <Setter Property="Fill" Value="{DynamicResource RankBar1EdgeBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Rank}" Value="2">
+                                                                <Setter Property="Fill" Value="{DynamicResource RankBar2EdgeBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Rank}" Value="3">
+                                                                <Setter Property="Fill" Value="{DynamicResource RankBar3EdgeBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Rank}" Value="4">
+                                                                <Setter Property="Fill" Value="{DynamicResource RankBar4EdgeBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Rank}" Value="5">
+                                                                <Setter Property="Fill" Value="{DynamicResource RankBar5EdgeBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Rank}" Value="6">
+                                                                <Setter Property="Fill" Value="{DynamicResource RankBar6EdgeBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Rank}" Value="7">
+                                                                <Setter Property="Fill" Value="{DynamicResource RankBar7EdgeBrush}"/>
+                                                            </DataTrigger>
                                                             <DataTrigger Binding="{Binding IsSelf}" Value="True">
                                                                 <Setter Property="Fill" Value="{DynamicResource SelfDamageBarEdgeBrush}"/>
                                                             </DataTrigger>
@@ -452,9 +494,11 @@
                                         <ColumnDefinition Width="44"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding Rank}"
-                                               Foreground="{DynamicResource MutedBrush}"
+                                               Foreground="{DynamicResource TextBrush}"
                                                FontFamily="{DynamicResource MonoFont}"
-                                               FontSize="11"
+                                               FontSize="14"
+                                               FontWeight="Bold"
+                                               TextAlignment="Center"
                                                VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1"
                                                 Orientation="Horizontal"
@@ -476,7 +520,7 @@
                                     </StackPanel>
                                     <!-- 전투력: 정적 프로필 정보, 이름 그룹에 속함 -->
                                     <TextBlock Grid.Column="2" Text="{Binding CombatPowerDisplay}"
-                                               Foreground="{DynamicResource GoldBrush}"
+                                               Foreground="{DynamicResource CombatPowerBrush}"
                                                FontFamily="{DynamicResource MonoFont}"
                                                FontSize="11"
                                                FontWeight="SemiBold"
@@ -495,7 +539,7 @@
                                                ToolTip="총 누적 데미지"/>
                                     <!-- DPS: 시각 중심, compact 표기 (241.8K) -->
                                     <TextBlock Grid.Column="5" Text="{Binding DpsDisplay}"
-                                               Foreground="{DynamicResource CyanBrush}"
+                                               Foreground="{DynamicResource DpsBrush}"
                                                FontFamily="{DynamicResource MonoFont}"
                                                FontSize="14"
                                                FontWeight="Bold"
@@ -510,7 +554,7 @@
                                             VerticalAlignment="Center"
                                             HorizontalAlignment="Right">
                                         <TextBlock
-                                            Text="{Binding DamageSharePercent, StringFormat={}{0:F0}%}"
+                                            Text="{Binding DamageSharePercent, StringFormat={}{0:F1}%}"
                                             Foreground="{DynamicResource TextBrush}"
                                             FontFamily="{DynamicResource MonoFont}"
                                             FontSize="11"

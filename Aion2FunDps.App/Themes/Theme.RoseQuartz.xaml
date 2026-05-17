@@ -41,6 +41,10 @@
          Warm enough to bridge pink surface and DPS raspberry. -->
     <SolidColorBrush x:Key="GoldBrush"          Color="#B8853F"/>
     <SolidColorBrush x:Key="GoldDimBrush"       Color="#8B6230"/>
+    <!-- 전투력 컬럼 — saturated rose 배경에 deep plum-indigo 가 식별성 + 테마 톤 둘 다 살림. -->
+    <SolidColorBrush x:Key="CombatPowerBrush"   Color="#3A2D5C"/>
+    <!-- DPS — rose pink 배경에 짙은 청록이 보색으로 또렷. -->
+    <SolidColorBrush x:Key="DpsBrush"           Color="#0F4C5C"/>
 
     <!-- DPS column (CyanBrush slot) — raspberry pink, the brand pop. The
          saturation steps up from the BG so the most important number on
@@ -95,6 +99,25 @@
     <SolidColorBrush x:Key="PodiumGoldBrush"    Color="#B8853F"/>
     <SolidColorBrush x:Key="PodiumSilverBrush"  Color="#9A8B95"/>
     <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#8B4A2E"/>
+
+    <!-- Rank-별 막대 — saturated rose (#F6B0C8) 배경에 대비되는 어두운 보색 톤.
+         핑크 배경에 핑크 막대 깔리면 안 보이므로 보색/어두운 톤으로. alpha 0x55 / 0xCC. -->
+    <SolidColorBrush x:Key="RankBar1Brush"      Color="#558B2942"/>  <!-- dark wine -->
+    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#CC8B2942"/>
+    <SolidColorBrush x:Key="RankBar2Brush"      Color="#551F5670"/>  <!-- deep teal -->
+    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#CC1F5670"/>
+    <SolidColorBrush x:Key="RankBar3Brush"      Color="#555E2D8A"/>  <!-- royal purple -->
+    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#CC5E2D8A"/>
+    <SolidColorBrush x:Key="RankBar4Brush"      Color="#555C6B23"/>  <!-- dark olive -->
+    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#CC5C6B23"/>
+    <SolidColorBrush x:Key="RankBar5Brush"      Color="#554D2F1F"/>  <!-- espresso -->
+    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#CC4D2F1F"/>
+    <SolidColorBrush x:Key="RankBar6Brush"      Color="#551F3358"/>  <!-- deep navy -->
+    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#CC1F3358"/>
+    <SolidColorBrush x:Key="RankBar7Brush"      Color="#553C4147"/>  <!-- slate -->
+    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#CC3C4147"/>
+    <SolidColorBrush x:Key="RankBar8Brush"      Color="#552F4E36"/>  <!-- dark forest -->
+    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#CC2F4E36"/>
 
     <!-- Logo (AION2FUN wordmark) — pink-to-magenta gradient. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

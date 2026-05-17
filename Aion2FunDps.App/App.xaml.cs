@@ -245,6 +245,7 @@ public partial class App : Application
 #if DEBUG
             aggregator.Boss.DiagnosticLogPath = LogPaths.Combine("reset-debug.log");
             aggregator.RosterDebugLogPath = LogPaths.Combine("roster-debug.log");
+            aggregator.ProxyDebugLogPath = LogPaths.Combine("proxy-debug.log");
 #endif
 
             // Wire mob_code → boss-status predicate. Three-state result:
@@ -399,6 +400,7 @@ public partial class App : Application
                     vm.UpdateVersionLabel = update.Version;
                     vm.UpdateDownloadUrl = update.DownloadUrl;
                     vm.UpdateHtmlUrl = update.HtmlUrl;
+                    vm.UpdateExpectedSha256 = update.ExpectedSha256 ?? "";
                     vm.IsUpdateAvailable = true;
                 });
             });

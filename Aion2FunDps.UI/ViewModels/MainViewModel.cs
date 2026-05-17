@@ -58,6 +58,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string updateVersionLabel = "";
     [ObservableProperty] private string updateDownloadUrl = "";
     [ObservableProperty] private string updateHtmlUrl = "";
+    [ObservableProperty] private string updateExpectedSha256 = "";  // Release body 에서 추출. 무결성 검증용.
 
     /// <summary>
     /// 지분율 계산 모드 ("Party" 또는 "BossHp"). AppSettings 와 동기화.

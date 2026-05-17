@@ -112,6 +112,37 @@ public sealed class BossTracker
         }
     }
 
+    /// <summary>
+    /// Cold-start friendly check: "이 타겟이 활성 보스급으로 보이는가?"
+    /// IsBossMode 보다 느슨 (strict mob_code 매칭 요구 X). mob_code 가 아직 등록 안 된
+    /// boss 도 통과 — 던전 중간에 미터를 켜서 SUMMON_SPAWN / ENCOUNTER_ANNOUNCEMENT 을
+    /// 놓친 케이스를 위함.
+    ///
+    /// **이 함수는 cold-start self proxy 채택 결정 전용.** UI 표시 (boss banner),
+    /// kill 감지, reset 트리거 같은 정통 boss flow 는 IsBossMode / IsBossGrade 의
+    /// 기존 strict 의미를 그대로 사용해야 한다. PvP 20M HP 유저를 보스로 오인하거나
+    /// 일반 던전 phase transition 에 잘못된 reset 이 걸리는 회귀를 막기 위함.
+    ///
+    /// 조건 (모두 충족):
+    ///   - targetId == FocusedEntityId (현재 추적 중인 보스 타겟)
+    ///   - CurrentHp > 0 (살아있는 상태)
+    ///   - IncomingDamageEvents > 0 (실제로 데미지 들어간 — 단순 등장만으로 안 됨)
+    ///   - MaxHp >= BossHpThreshold (보스급 HP)
+    ///   - IsKnownBoss != false (false 면 명시적으로 보스 아님으로 판정된 것, 제외)
+    /// </summary>
+    public bool LooksLikeActiveBossTarget(int targetId)
+    {
+        if (!FocusedEntityId.HasValue) return false;
+        if (FocusedEntityId.Value != targetId) return false;
+        if (!_entities.TryGetValue(targetId, out var s)) return false;
+        if (s.CurrentHp == 0) return false;
+        if (s.IncomingDamageEvents == 0) return false;
+        if (s.MaxHp < BossHpThreshold) return false;
+        // null (unknown) 통과, true 통과, false 만 거부.
+        // PvP 캐릭터가 명시적으로 not-boss 로 IsKnownBoss 에 등록된 경우 제외.
+        return IsKnownBoss?.Invoke(targetId) != false;
+    }
+
     public long? FocusedMaxHp =>
         FocusedEntityId.HasValue && _entities.TryGetValue(FocusedEntityId.Value, out var s)
             ? s.MaxHp : null;

@@ -130,6 +130,14 @@ public sealed class PlayerStats
                 otherSkill,
                 (_, existing) => { existing.MergeFrom(otherSkill); return existing; });
         }
+
+        // Freeze 상태 전수 (cold-start proxy → canonical merge 가 보스 처치 이후에
+        // 일어나는 케이스 대비). other 가 freeze 상태였으면 자신도 freeze 적용해서
+        // 처치 시점 DPS 가 사라지지 않게 한다. 이미 자신이 freeze 면 보존 (own 우선).
+        if (other._frozenDps.HasValue && !_frozenDps.HasValue)
+            _frozenDps = other._frozenDps;
+        foreach (var (tid, frozenVal) in other._frozenTargetDps)
+            _frozenTargetDps.TryAdd(tid, frozenVal);
     }
 
     /// <summary>

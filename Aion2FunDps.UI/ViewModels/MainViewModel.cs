@@ -291,29 +291,29 @@ public partial class MainViewModel : ObservableObject
             primary = crew.OrderByDescending(row => row.Player.HitCount).FirstOrDefault().Player;
         bool selfIsRegistered = _aggregator.Registry.SelfUserId.HasValue;
 
-        // Row visibility gates — A2Viewer-equivalent strict identity rule.
-        // A row only renders when the actor has a NicknameRegistry entry
-        // (matches A2Viewer's "WhitelistKey not empty" check). Without this
-        // strictness, summon/pet entities whose SUMMON_SPAWN packet didn't
-        // carry a usable owner name slip through as "Actor_27580" phantom
-        // rows during multi-class boss fights (사용자 보고: 치유 직업 펫이
-        // 별도 행으로 뜸).
+        // Row visibility gates.
         //
-        // The boss-mode primary-guess fallback stays — it's gated on
-        // bossEngaged so it can't trigger in town and only surfaces the
-        // single dominant unnamed actor as the placeholder until SELF_NICK
-        // resolves.
+        // 통과 조건 (OR):
+        //   1) registry 진입 — 닉네임 매핑 확보됨. 정상 케이스.
+        //   2) bossEngaged + primary guess — 보스 한참 때리는 중인데 닉 미정인
+        //      dominant actor 한 명을 placeholder 로 surface.
+        //   3) **(v0.1.4 신규) LooksLikePlayer + 활성 전투 컨텍스트** —
+        //      skill_code prefix 11..18 (플레이어 클래스 스킬) 50%+ 누적
+        //      5히트+ 인 actor 는 펫/소환수가 아닌 진짜 플레이어. registry
+        //      없이도 surface. 던전 cold-start 트래시 페이즈에서 4명 파티가
+        //      행 0개로 떨어지던 버그의 근본 픽스.
         //
-        // Cold-start mid-dungeon (meter started after the matchmaking
-        // roster fired) is now handled at the source: SELF_NICK auto-adds
-        // self to _partyMembers, op=0B 97 immediately registers joiners,
-        // and op=0297 keeps re-firing as members move. The leaderboard
-        // staying empty for a few seconds until those signals arrive is
-        // preferable to surfacing phantom rows.
+        // PvP 안전 게이트: HasFocusedTarget 으로 "활성 전투 중" 일 때만 (3) 적용.
+        // 로비 / 마을 idle 에서 누가 옆에서 PvP 해도 미터에 안 뜸.
+        // (펫/소환수 phantom 행 차단은 LooksLikePlayer 의 skill-prefix
+        // 휴리스틱 자체가 담당 — JobClassDetector.FromSkillCode 가
+        // 펫 스킬을 Unknown 으로 분류해 50% 기준을 못 넘기게 함.)
         bool bossEngaged = bossTargetId.HasValue;
+        bool inActiveCombat = bossSnap.FocusedEntityId.HasValue;
         crew = crew.Where(row =>
             _aggregator.Registry.GetEntry(row.Player.ActorId) != null
-            || (bossEngaged && primary != null && primary.ActorId == row.Player.ActorId))
+            || (bossEngaged && primary != null && primary.ActorId == row.Player.ActorId)
+            || (inActiveCombat && row.Player.LooksLikePlayer))
             .ToList();
 
         // No UI dedupe needed: NicknameRegistry's canonical-id model collapses

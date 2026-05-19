@@ -347,9 +347,12 @@ public partial class App : Application
             if (Settings.WindowHeight is double h && h >= 100) window.Height = h;
 
             // Restore persisted preferences onto the view-model.
+            // IsCompact 는 의도적으로 복원하지 않음 — 사용자가 실수로 컴팩트
+            // 토글하고 종료하면 다음 실행 때 타이틀바만 보여서 "행 0개 = 미터
+            // 깨짐" 으로 오인하는 케이스 (사용자 보고 2026-05-19) 의 근본 픽스.
+            // 매 실행을 펼친 상태로 시작 → 빈 창 오인 불가.
             vm.WindowOpacity = Settings.WindowOpacity;
             vm.AutoResetOnBoss = Settings.AutoResetOnBoss;
-            vm.IsCompact = Settings.IsCompact;
             vm.ShareCalculationMode = Settings.ShareCalculationMode;
 
             Log("Showing window");
@@ -441,7 +444,6 @@ public partial class App : Application
             {
                 Settings.WindowOpacity         = vm.WindowOpacity;
                 Settings.AutoResetOnBoss       = vm.AutoResetOnBoss;
-                Settings.IsCompact             = vm.IsCompact;
                 Settings.ShareCalculationMode  = vm.ShareCalculationMode;
             }
             Settings.SelectedTheme = ThemeManager.CurrentThemeId;

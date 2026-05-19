@@ -807,17 +807,10 @@ public sealed class DpsAggregator
                     LogDamageApplied(dmg, actor, preDmg, stats.TotalDamage);
                     TouchMember(actor);
 
-                    // Cold-start party detection: any actor landing damage on
-                    // a confirmed boss-grade entity is a party member —
-                    // BUT only add to _partyMembers when we already have a
-                    // nickname-resolved canonical for them. Without the
-                    // GetEntry gate, a distant member's dungeon entity_id
-                    // (not yet aliased to their lobby canonical via
-                    // OTHER_NICK) gets added under the raw id, producing a
-                    // duplicate row alongside the lobby canonical entry the
-                    // matchmaking roster already added (audit 2026-05-04:
-                    // B12 medium). Once OTHER_NICK arrives, RegisterCanonical's
-                    // orphan-merge folds the damage onto the canonical row.
+                    // 1) Registered + boss focus 의 fast-add (기존). actor 가 이미
+                    //    registry 에 있고 focused boss 를 때리는 정상 케이스 —
+                    //    첫 hit 부터 즉시 _partyMembers 에 surface. LooksLikePlayer
+                    //    의 5-hit 임계 대기 없음.
                     if (_boss.IsBossMode
                         && _boss.FocusedEntityId == dmg.TargetId
                         && !_partyMembers.Contains(actor)
@@ -827,66 +820,50 @@ public sealed class DpsAggregator
                         _roomTracker.AddLiveMember(actor);
                     }
 
-                    // Cold-start self detection. Two flavours:
+                    // 2) ────────────────────────────────────────────────────────
+                    //    근본 식별 게이트 (v0.1.4): "이 actor 가 진짜 플레이어인가" 를
+                    //    패킷 도착 타이밍 (SELF_NICK / BULK_INFO / OTHER_NICK) 이 아닌
+                    //    **actor 의 행동 신호** 로 판정.
                     //
-                    //   (a) Self lobby canonical exists but its row carries
-                    //       no damage (matchmaking roster ran, dungeon entity
-                    //       id is different and hasn't been aliased yet —
-                    //       사용자 보고 2026-05-06: 짭호=46569 lobby vs 5807
-                    //       dungeon).
+                    //    신호 = PlayerStats.LooksLikePlayer
+                    //      - skill_code prefix 11..18 (플레이어 클래스 스킬) 50%+
+                    //      - 최소 5 hits 누적 (1-shot 노이즈 차단)
                     //
-                    //   (b) Cold-start mid-dungeon with NO matchmaking
-                    //       packet ever observed: SelfUserId is null,
-                    //       _partyMembers is empty. The very first actor
-                    //       hitting the focused boss is overwhelmingly
-                    //       likely to be the user (사용자 보고 2026-05-06
-                    //       03:24~03:25: "처음 켰을때 파티원 인식 안되고 보스
-                    //       때려도 딜기록 안됨". Logs: raw=5730 boss-targets
-                    //       52706 from t=32.245 onwards but never enters
-                    //       _partyMembers because the previous gate required
-                    //       SelfUserId to be known).
+                    //    왜 이게 "근본" 인가:
+                    //      기존 v0.1.3 프록시는 boss-grade 타겟 의존 → 트래시
+                    //      페이즈 / 보스 없는 컨텐츠 / SELF_NICK 안 오는 미러 룸 등에서
+                    //      행 0개 버그 발생.
+                    //      skill_code 는 데미지 패킷 자체에 포함 → 서버 push 타이밍
+                    //      의존 0. 5 hits 만에 결정. 펫/소환수는 JobClassDetector
+                    //      가 Unknown 으로 분류해서 자동 제외.
                     //
-                    // Either flavour: adopt the unregistered boss-targeting
-                    // actor as a proxy. _partyMembers surfaces it through
-                    // OurCrew, EvictStaleMembers no longer wipes it (the
-                    // accompanying fix removed its instant-evict-when-not-
-                    // in-_partyMembers branch), and damage accumulates
-                    // visibly. The boss-mode + focused-target gate keeps
-                    // PvP / stray mob damage out.
-                    // Cold-start gate: 기존 IsBossMode 는 mob_code 가 boss 로 확실히
-                    // 등록된 경우만 true → SUMMON_SPAWN / ENCOUNTER_ANNOUNCEMENT 못 받은
-                    // 던전 도중 시작 시 보스 21M HP 라도 false. LooksLikeActiveBossTarget
-                    // 은 HP fallback + 데미지 게이트로 cold-start 케이스도 통과시킴.
-                    // 정통 boss flow (banner / kill / reset) 는 IsBossMode 그대로 사용.
-                    //
-                    // 제외 게이트:
-                    //   - 소환수 / 펫: SummonRepository 에 owner 매핑 있으면 player actor 아님
-                    //   - mob_code 있는 actor: EntityRegistry 등록된 entity = 몹/펫이지 player 아님
-                    if (_boss.LooksLikeActiveBossTarget(dmg.TargetId)
-                        && !_partyMembers.Contains(actor)
-                        && _registry.GetEntry(actor) == null
+                    //    여기서 _partyMembers 에 추가된 actor 는 OurCrew 가 surface
+                    //    하고, 이후 패킷이 도착하면 RegisterCanonical 의 orphan-merge
+                    //    가 데미지를 lobby canonical 로 fold (기존 mechanism 보존).
+                    bool actorIsPlayerLike = stats.LooksLikePlayer
                         && !_summons.IsSummon(rawActor)
                         && _entities.GetMobCode(rawActor) == null
-                        && _entities.GetMobCode(actor) == null)
+                        && _entities.GetMobCode(actor) == null;
+
+                    if (actorIsPlayerLike && !_partyMembers.Contains(actor))
                     {
-                        bool flavorA = _registry.SelfUserId is int selfCanonical
-                            && actor != selfCanonical
-                            && (Current.GetExisting(selfCanonical)?.TotalDamage ?? 0) == 0;
-                        bool flavorB = _registry.SelfUserId == null
-                            && _partyMembers.Count == 0
-                            && _proxySelfActorId == null;  // 이미 proxy 채택했으면 새로 X
-                        if (flavorA || flavorB)
-                        {
-                            _partyMembers.Add(actor);
-                            _roomTracker.AddLiveMember(actor);
-                            if (flavorB)
-                            {
-                                _proxySelfActorId = actor;
-                                _proxyAdoptedAt = DateTime.UtcNow;
-                                LogProxyDecision("PROXY_ADOPTED", actor,
-                                    $"target={dmg.TargetId} maxHp={_boss.FocusedMaxHp ?? 0} flavor=NO_SELF_NICK");
-                            }
-                        }
+                        _partyMembers.Add(actor);
+                        _roomTracker.AddLiveMember(actor);
+                    }
+
+                    // 3) Self-proxy 채택: SelfUserId 미정 (= SELF_NICK 영영 안 옴) +
+                    //    아직 proxy 안 잡혔으면, 첫 번째 LooksLikePlayer 미등록 actor 를
+                    //    self proxy 로 채택. TryMergeProxyToSelf 가 나중에 SELF_NICK /
+                    //    OTHER_NICK 도착 시 canonical 로 merge.
+                    if (actorIsPlayerLike
+                        && _registry.SelfUserId == null
+                        && _proxySelfActorId == null
+                        && _registry.GetEntry(actor) == null)
+                    {
+                        _proxySelfActorId = actor;
+                        _proxyAdoptedAt = DateTime.UtcNow;
+                        LogProxyDecision("PROXY_ADOPTED", actor,
+                            $"hits={stats.HitCount} target={dmg.TargetId} flavor=LOOKS_LIKE_PLAYER");
                     }
                 }
                 break;

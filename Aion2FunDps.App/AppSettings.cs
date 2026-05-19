@@ -24,7 +24,6 @@ public sealed class AppSettings
     public double? WindowHeight { get; set; }
 
     public bool AutoResetOnBoss { get; set; } = true;
-    public bool IsCompact { get; set; } = false;
 
     /// <summary>
     /// 지분율 계산 기준.

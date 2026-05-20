@@ -645,8 +645,20 @@ public sealed class DpsAggregator
     }
 
     /// <summary>
-    /// 120 초 동안 닉네임 확인 신호 없으면 proxy 폐기. EvictStaleMembers tick 에서 호출.
-    /// PlayerStats / _partyMembers 정리해서 "잘못 잡힌 self" 가 영영 남는 것 방지.
+    /// 120 초 동안 닉네임 확인 신호 없으면 proxy 채택 상태만 폐기. EvictStaleMembers tick
+    /// 에서 호출.
+    ///
+    /// **중요**: _partyMembers / PlayerStats 는 건드리지 않는다. proxy 는 단지 "self
+    /// 후보 추적" 신호일 뿐이고, 이미 shared-target + LooksLikePlayer 게이트를 통과해
+    /// _partyMembers 에 들어온 actor 는 legitimate party member 이므로 그대로 유지.
+    ///
+    /// 이전 동작 (사용자 보고 2026-05-19 21:14~21:17) 은 timeout 시 row + 누적 데미지
+    /// 9M 을 통째로 삭제해 사용자 눈에 "한명 초기화" 로 보였음. proxy 가 정당하게
+    /// 잡혔는데 단지 SELF_NICK 이 늦게 오는 케이스에서 row 가 사라지면 안 됨.
+    ///
+    /// 정말로 "잘못 잡힌 self" 케이스 (예: random 플레이어가 proxy 로 선정됨) 라면
+    /// shared-target 게이트가 애초에 _partyMembers add 를 막았을 것이고, 만에 하나
+    /// 들어왔어도 다음 EvictStaleMembers 가 last-seen 기준으로 정리한다.
     /// </summary>
     private void TryExpireProxy()
     {
@@ -655,8 +667,6 @@ public sealed class DpsAggregator
         if (DateTime.UtcNow - adopted < ProxyTimeout) return;
 
         LogProxyDecision("PROXY_DISCARDED", proxy, $"reason=TIMEOUT elapsed={(int)(DateTime.UtcNow - adopted).TotalSeconds}s");
-        _partyMembers.Remove(proxy);
-        Current.Remove(proxy);
         _proxySelfActorId = null;
         _proxyAdoptedAt = null;
     }
@@ -840,21 +850,22 @@ public sealed class DpsAggregator
                     //    여기서 _partyMembers 에 추가된 actor 는 OurCrew 가 surface
                     //    하고, 이후 패킷이 도착하면 RegisterCanonical 의 orphan-merge
                     //    가 데미지를 lobby canonical 로 fold (기존 mechanism 보존).
+                    // PvP gate: 타겟이 NicknameRegistry 에 등록된 플레이어이면 (= 다른
+                    // 플레이어를 때리는 중) LooksLikePlayer 추가 차단. 마을 PvP duelist
+                    // 들이 leaderboard 에 surface 되던 버그 (사용자 보고 2026-05-19 18:xx
+                    // 천부장이 짭호한테 PvP → 천부장 행 등장) 의 픽스. 몹은 registry 에
+                    // 등록되지 않으므로 GetEntry==null → 통과 (정상 던전 전투).
+                    bool targetIsPlayer = _registry.GetEntry(dmg.TargetId) != null;
                     bool actorIsPlayerLike = stats.LooksLikePlayer
                         && !_summons.IsSummon(rawActor)
                         && _entities.GetMobCode(rawActor) == null
-                        && _entities.GetMobCode(actor) == null;
+                        && _entities.GetMobCode(actor) == null
+                        && !targetIsPlayer;
 
-                    if (actorIsPlayerLike && !_partyMembers.Contains(actor))
-                    {
-                        _partyMembers.Add(actor);
-                        _roomTracker.AddLiveMember(actor);
-                    }
-
-                    // 3) Self-proxy 채택: SelfUserId 미정 (= SELF_NICK 영영 안 옴) +
-                    //    아직 proxy 안 잡혔으면, 첫 번째 LooksLikePlayer 미등록 actor 를
-                    //    self proxy 로 채택. TryMergeProxyToSelf 가 나중에 SELF_NICK /
-                    //    OTHER_NICK 도착 시 canonical 로 merge.
+                    // 3) Self-proxy 채택 (먼저 실행 — party 추가 게이트가 self id 를 기준으로 함).
+                    //    SelfUserId 미정 + 아직 proxy 안 잡혔으면, 첫 번째 LooksLikePlayer
+                    //    미등록 actor 를 self proxy 로 채택. TryMergeProxyToSelf 가 나중에
+                    //    SELF_NICK / OTHER_NICK 도착 시 canonical 로 merge.
                     if (actorIsPlayerLike
                         && _registry.SelfUserId == null
                         && _proxySelfActorId == null
@@ -864,6 +875,35 @@ public sealed class DpsAggregator
                         _proxyAdoptedAt = DateTime.UtcNow;
                         LogProxyDecision("PROXY_ADOPTED", actor,
                             $"hits={stats.HitCount} target={dmg.TargetId} flavor=LOOKS_LIKE_PLAYER");
+                    }
+
+                    // 2) Shared-target 게이트: actor 가 self 이거나, **self 가 같은 mob 을
+                    //    같이 때리고 있을 때**만 _partyMembers 에 추가. 필드에서 옆 플레이어
+                    //    가 자기 몹 잡는 거 (사용자 보고 2026-05-19 ~18:xx: 체리코코가
+                    //    늪 몹 잡는데 미터에 등록됨) 차단의 근본 게이트. 던전 파티는 모두가
+                    //    같은 보스를 때리므로 자연 통과, 필드 random 플레이어는 타겟이 달라서
+                    //    차단됨.
+                    //
+                    //    self id 우선순위: SelfUserId (확정) → _proxySelfActorId (콜드스타트
+                    //    임시). 둘 다 없으면 (가장 첫 LooksLikePlayer actor 가 직전 self
+                    //    proxy 로 막 채택된 케이스 제외) 추가 보류 — 다음 damage 가 들어와
+                    //    self 가 결정되면 그때 추가.
+                    int? selfForGate = _registry.SelfUserId ?? _proxySelfActorId;
+                    bool isSelfActor = selfForGate.HasValue && selfForGate.Value == actor;
+                    bool sharesTargetWithSelf = false;
+                    if (selfForGate.HasValue && !isSelfActor)
+                    {
+                        var selfStats = Current.GetExisting(selfForGate.Value);
+                        sharesTargetWithSelf = selfStats != null
+                            && selfStats.GetDamageToTarget(dmg.TargetId) > 0;
+                    }
+
+                    if (actorIsPlayerLike
+                        && !_partyMembers.Contains(actor)
+                        && (isSelfActor || sharesTargetWithSelf))
+                    {
+                        _partyMembers.Add(actor);
+                        _roomTracker.AddLiveMember(actor);
                     }
                 }
                 break;
@@ -1097,8 +1137,34 @@ public sealed class DpsAggregator
                     if (newRoom)
                     {
                         // CASE: moved into a new room. Wipe old, set new.
+                        //
+                        // Post-kill preservation: 직전 던전 처치 기록을 다음 풀 시작까지
+                        // 유지하기 위해 LastKilledBossId 가 박혀 있으면 WipeMembership 을
+                        // 조건부 스킵. 단 **새 방 멤버 ∩ 보존된 _partyMembers = ∅** 면
+                        // 완전히 다른 파티로 이동한 것 (예: 매치 해체 후 새 파티 결성)
+                        // 이므로 깔끔하게 wipe — 안 그러면 새 던전 트래시 페이즈에서
+                        // LooksLikePlayer 게이트가 새 인원을 _partyMembers 에 추가하면서
+                        // 옛 4명 + 새 4명 = 8행 섞임이 발생 (사용자 보고 2026-05-19).
                         LogRosterTransition(roster, "ROOM_CHANGE");
-                        WipeMembership();
+                        // self 는 항상 양쪽에 있으므로 overlap 에서 제외 — self 만 매칭되면
+                        // "같은 자기 + 완전 다른 3명" 인데 sameParty 로 잘못 분류되어 wipe
+                        // 안 됨 (사용자 보고 2026-05-19 17:57: ROOM_CHANGE 후 옛 던전 dungeon
+                        // ids 가 _partyMembers 에 그대로 남음).
+                        int? selfCanonicalForOverlap = _registry.SelfUserId;
+                        bool sameParty = LastKilledBossId.HasValue
+                            && memberCanonicalIds.Any(id =>
+                                id != selfCanonicalForOverlap
+                                && _partyMembers.Contains(id));
+                        if (!sameParty)
+                        {
+                            // 다른 파티로 이동 (또는 처치 이력 없음) — 표준 wipe.
+                            // LastKilledBossId 도 명시적 클리어해서 아래 toRemove /
+                            // member-add 분기가 일반 경로로 흐르도록.
+                            WipeMembership();
+                            LastKilledBossId = null;
+                        }
+                        // sameParty=true 면 wipe 스킵: 옛 멤버 + 데미지 유지. 새 방
+                        // 멤버 add 는 아래 분기에서 LastKilledBossId 가드로 다시 스킵됨.
                         _currentMatchmakingRoom = rosterRoom;
                     }
                     else
@@ -1157,11 +1223,22 @@ public sealed class DpsAggregator
                         _roomTracker.RemoveMember(id);
                     }
 
-                    foreach (var canonicalId in memberCanonicalIds)
+                    // Post-kill freeze: 직전 dungeon kill 직후 ROOM_CHANGE 가 fire 하면
+                    // 새 lobby/match id 들이 들어옴 → 동일 인물이 dungeon id + lobby id
+                    // 두 번 _partyMembers 에 들어가서 leaderboard 가 중복 행 8개로 보임.
+                    // LastKilledBossId 박혀 있을 때는 새 멤버 add 도 스킵 — 다음
+                    // NEW_BOSS_FIRED → ResetCore 가 _partyMembers 클리어한 뒤
+                    // LooksLikePlayer 게이트와 후속 roster UPDATE 가 새 dungeon
+                    // 멤버를 자연스럽게 다시 집어넣음. (RegisterCanonical 은 위에서
+                    // 이미 실행됐으므로 nickname / alias 매핑은 정상 유지됨.)
+                    if (!LastKilledBossId.HasValue)
                     {
-                        _partyMembers.Add(canonicalId);
-                        Current.GetOrCreate(canonicalId);
-                        TouchMember(canonicalId);
+                        foreach (var canonicalId in memberCanonicalIds)
+                        {
+                            _partyMembers.Add(canonicalId);
+                            Current.GetOrCreate(canonicalId);
+                            TouchMember(canonicalId);
+                        }
                     }
 
                     NicknameEventCount += roster.Members.Count;

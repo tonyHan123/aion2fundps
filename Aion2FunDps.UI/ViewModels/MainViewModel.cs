@@ -349,7 +349,14 @@ public partial class MainViewModel : ObservableObject
                 Players.RemoveAt(i);
         }
 
-        // Update existing or insert new
+        // Update existing or insert new.
+        // classCounter tracks unnamed actors per detected job class so the
+        // fallback display "마도성" / "검성" 등이 동일 직업 2명 케이스에서 "마도성2"
+        // 같이 disambiguate 됨. cold-start mid-dungeon 에서 OTHER_NICK / SELF_NICK
+        // 패킷이 영영 안 오는 상황 (사용자 보고 2026-05-19 21:1x: "겜 중간에 켰는데
+        // Actor 만 뜬다") 의 가독성 개선 — 진짜 닉네임은 모르지만 직업이라도 보여
+        // "내가 누구를 보고 있는지" 즉시 파악 가능.
+        var classCounter = new Dictionary<JobClass, int>();
         int rank = 0;
         foreach (var row in crew)
         {
@@ -363,10 +370,47 @@ public partial class MainViewModel : ObservableObject
             bool isPrimaryGuessRow = !isSelf && !selfIsRegistered && primary != null
                                   && primary.ActorId == p.ActorId && bossEngaged;
 
-            // Display name: registered nickname if known; else "나" for the heuristic
-            // primary (likely user); else "Actor_<id>" for other unidentified entities.
-            string name = registeredName
-                          ?? (isPrimaryGuessRow ? "나" : $"Actor_{p.ActorId}");
+            // Class detection (moved up — used for name fallback as well as icon).
+            //   1. Registry's Job field — populated from op=0297 / LiveStatus
+            //      packets at matchmaking-room entry, so the icon shows up
+            //      BEFORE any damage tick (previously the leaderboard sat
+            //      iconless until first boss hit, which the user reported
+            //      as "원정 대기/입장 때 클래스 이미지 안 뜸").
+            //   2. Skill-code prefix fallback — for actors whose Job byte
+            //      didn't make it (truncated packet, unknown layout) but
+            //      whose damage skills reveal the class.
+            JobClass detectedClass = JobClass.Unknown;
+            if (entry?.Job is int gameJob && gameJob > 0)
+                detectedClass = JobClassDetector.FromGameJobCode(gameJob);
+            if (detectedClass == JobClass.Unknown)
+                detectedClass = JobClassDetector.Detect(p.Skills.Keys);
+
+            // Display name resolution priority:
+            //   1) registered nickname (정상 케이스)
+            //   2) "나" — heuristic primary guess during boss fight
+            //   3) Korean class name (cold-start fallback — "마도성", "검성", etc.)
+            //      with index suffix when same class repeats: "마도성2".
+            //   4) "Actor_<id>" — last resort when class also unknown (펫? 미식별 actor?).
+            string name;
+            if (registeredName != null)
+            {
+                name = registeredName;
+            }
+            else if (isPrimaryGuessRow)
+            {
+                name = "나";
+            }
+            else if (detectedClass != JobClass.Unknown)
+            {
+                classCounter.TryGetValue(detectedClass, out int sameClassSeen);
+                classCounter[detectedClass] = sameClassSeen + 1;
+                var koreanClass = JobClassDetector.GetKoreanName(detectedClass);
+                name = sameClassSeen == 0 ? koreanClass : $"{koreanClass}{sameClassSeen + 1}";
+            }
+            else
+            {
+                name = $"Actor_{p.ActorId}";
+            }
 
             // Server suffix — matches the in-game lobby convention
             // ("릴캐[바바]" for cross-server members). Show for every known
@@ -398,20 +442,8 @@ public partial class MainViewModel : ObservableObject
                 vm = new PlayerRowViewModel { ActorId = p.ActorId };
                 Players.Add(vm);
             }
-            // Class detection priority:
-            //   1. Registry's Job field — populated from op=0297 / LiveStatus
-            //      packets at matchmaking-room entry, so the icon shows up
-            //      BEFORE any damage tick (previously the leaderboard sat
-            //      iconless until first boss hit, which the user reported
-            //      as "원정 대기/입장 때 클래스 이미지 안 뜸").
-            //   2. Skill-code prefix fallback — for actors whose Job byte
-            //      didn't make it (truncated packet, unknown layout) but
-            //      whose damage skills reveal the class.
-            JobClass detectedClass = JobClass.Unknown;
-            if (entry?.Job is int gameJob && gameJob > 0)
-                detectedClass = JobClassDetector.FromGameJobCode(gameJob);
-            if (detectedClass == JobClass.Unknown)
-                detectedClass = JobClassDetector.Detect(p.Skills.Keys);
+            // (detectedClass 위에서 이미 계산됨 — name fallback 에 사용했고 아래
+            //  vm.ClassColorHex 등 setter 에도 그대로 재사용.)
 
             // Build tooltip showing top skills with names — helps user verify class detection
             var topSkills = p.Skills.Values

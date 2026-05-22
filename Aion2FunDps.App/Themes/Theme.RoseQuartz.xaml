@@ -100,24 +100,25 @@
     <SolidColorBrush x:Key="PodiumSilverBrush"  Color="#9A8B95"/>
     <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#8B4A2E"/>
 
-    <!-- Rank-별 막대 — saturated rose (#F6B0C8) 배경에 대비되는 어두운 보색 톤.
-         핑크 배경에 핑크 막대 깔리면 안 보이므로 보색/어두운 톤으로. alpha 0x55 / 0xCC. -->
-    <SolidColorBrush x:Key="RankBar1Brush"      Color="#558B2942"/>  <!-- dark wine -->
-    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#CC8B2942"/>
-    <SolidColorBrush x:Key="RankBar2Brush"      Color="#551F5670"/>  <!-- deep teal -->
-    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#CC1F5670"/>
-    <SolidColorBrush x:Key="RankBar3Brush"      Color="#555E2D8A"/>  <!-- royal purple -->
-    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#CC5E2D8A"/>
-    <SolidColorBrush x:Key="RankBar4Brush"      Color="#555C6B23"/>  <!-- dark olive -->
-    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#CC5C6B23"/>
-    <SolidColorBrush x:Key="RankBar5Brush"      Color="#554D2F1F"/>  <!-- espresso -->
-    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#CC4D2F1F"/>
-    <SolidColorBrush x:Key="RankBar6Brush"      Color="#551F3358"/>  <!-- deep navy -->
-    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#CC1F3358"/>
-    <SolidColorBrush x:Key="RankBar7Brush"      Color="#553C4147"/>  <!-- slate -->
-    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#CC3C4147"/>
-    <SolidColorBrush x:Key="RankBar8Brush"      Color="#552F4E36"/>  <!-- dark forest -->
-    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#CC2F4E36"/>
+    <!-- Rank-별 막대 — HSV 색상환 ~45° 등간격 8색. saturated rose (#F6B0C8) BG
+         대비 800/900-shade 톤으로 분리. alpha 0x99 (60%) 로 기존 0x55 (33%) 보다
+         더 진하게. 사용자 보고 2026-05-23: 색 너무 흐리고 비슷한 색끼리 식별 어려움. -->
+    <SolidColorBrush x:Key="RankBar1Brush"      Color="#997F1D1D"/>  <!-- red 900 -->
+    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#FF7F1D1D"/>
+    <SolidColorBrush x:Key="RankBar2Brush"      Color="#99155E75"/>  <!-- cyan 800 -->
+    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#FF155E75"/>
+    <SolidColorBrush x:Key="RankBar3Brush"      Color="#99581C87"/>  <!-- purple 900 -->
+    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#FF581C87"/>
+    <SolidColorBrush x:Key="RankBar4Brush"      Color="#9914532D"/>  <!-- green 900 -->
+    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#FF14532D"/>
+    <SolidColorBrush x:Key="RankBar5Brush"      Color="#9992400E"/>  <!-- amber 800 -->
+    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#FF92400E"/>
+    <SolidColorBrush x:Key="RankBar6Brush"      Color="#991E3A8A"/>  <!-- blue 900 -->
+    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#FF1E3A8A"/>
+    <SolidColorBrush x:Key="RankBar7Brush"      Color="#999F1239"/>  <!-- rose 900 (vs BG pink) -->
+    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#FF9F1239"/>
+    <SolidColorBrush x:Key="RankBar8Brush"      Color="#991F2937"/>  <!-- gray 800 -->
+    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#FF1F2937"/>
 
     <!-- Logo (AION2FUN wordmark) — pink-to-magenta gradient. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

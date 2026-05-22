@@ -135,6 +135,14 @@ public sealed class DpsAggregator
     private DateTime? _lastBossKilledAt;
 
     /// <summary>
+    /// 처치 시점 파티 전체 데미지 합 (지분율 분모 freeze 용).
+    /// OnBossKilled 에서 캡쳐, ResetCore 에서 클리어. UI 가 이 값을 분모로 쓰면
+    /// 처치 후 멤버가 빠져도 % 가 재계산되지 않음 (사용자 보고 2026-05-22:
+    /// "한명나가니깐 내가 지분율 높은쪽에 가고 막 다 엉퀸거 같아").
+    /// </summary>
+    public long? FrozenTotalPartyDamage { get; private set; }
+
+    /// <summary>
     /// Cold-start self proxy 상태 머신.
     /// 던전 도중 미터 시작 시 SELF_NICK 패킷이 안 오는 케이스 — 첫 데미지의 actor_id 를
     /// 임시 self proxy 로 채택 → 후속 닉네임 신호 (SELF_NICK / PARTY_ASSEMBLY 단일
@@ -476,7 +484,19 @@ public sealed class DpsAggregator
         // Freeze/pin 은 auto-reset 모드에서만. cumulative 모드는 다음 보스로 누적이
         // 계속되어야 하므로 여기서 freeze 하면 DPS 가 첫 처치 시점에 박힌 채로
         // TotalDamage 만 증가해 사용자가 혼란스러워한 inconsistent state 가 됨.
+        // 지분율 분모 freeze 도 같은 이유로 cumulative 모드 제외.
         if (!AutoResetOnBoss) return;
+
+        // 지분율 분모 freeze (auto-reset 모드 전용) — 처치 시점 _partyMembers 의
+        // 데미지 합. 이후 멤버가 빠지거나 leaderboard 표시 멤버 셋이 변해도 % 가
+        // 흔들리지 않음. 다음 ResetCore (NEW_BOSS_FIRED) 에서 자동 클리어.
+        long partySum = 0;
+        foreach (var memberId in _partyMembers)
+        {
+            var ps = Current.GetExisting(memberId);
+            if (ps != null) partySum += ps.TotalDamage;
+        }
+        FrozenTotalPartyDamage = partySum > 0 ? partySum : (long?)null;
 
         // Snapshot every player's current rolling DPS so the displayed number stays
         // pinned to the kill moment until the next boss takes damage. Reset is
@@ -1373,6 +1393,21 @@ public sealed class DpsAggregator
                         owner = _registry.ResolveCanonical(sp.OwnerId) ?? sp.OwnerId;
                     if (owner.HasValue)
                         _summons.Register(sp.SummonId, owner.Value);
+
+                    // Cold-start nickname bridge: OwnerName 으로 canonical (lobby id) 을
+                    // 찾았고, sp.OwnerId 가 다른 id 면 (= dungeon-id 공간의 owner) 그
+                    // dungeon-id ↔ lobby canonical alias 를 등록. damage 이벤트에 dungeon-id
+                    // 가 actor 로 들어와도 nickname 즉시 해소됨 (사용자 보고 2026-05-20:
+                    // 던전 중간에 미터 켜면 치유성/호법성 같은 직업명 fallback 으로만 표시).
+                    // OwnerName-by-name 매칭으로 canonical 확정한 케이스만 적용 — id-only
+                    // 폴백은 raw==canonical 자기참조라 alias 가치 없음.
+                    if (!string.IsNullOrEmpty(sp.OwnerName)
+                        && owner.HasValue
+                        && sp.OwnerId != 0
+                        && sp.OwnerId != owner.Value)
+                    {
+                        _registry.AddAlias(sp.OwnerId, owner.Value);
+                    }
                     if (sp.MobCode.HasValue)
                         _entities.Register(sp.SummonId, sp.MobCode.Value);
                     SummonSpawnEventCount++;
@@ -1578,7 +1613,8 @@ public sealed class DpsAggregator
         long FocusedCurrentHp,
         long FocusedMaxHp,
         int? FocusedMobCode,
-        int? LastKilledBossId);
+        int? LastKilledBossId,
+        long? FrozenTotalPartyDamage);
 
     public BossSnapshot SnapshotBoss()
     {
@@ -1607,7 +1643,7 @@ public sealed class DpsAggregator
                 if (focus.HasValue)
                     mobCode = _entities.GetMobCode(focus.Value);
             }
-            return new BossSnapshot(focus, isMode, curHp, maxHp, mobCode, LastKilledBossId);
+            return new BossSnapshot(focus, isMode, curHp, maxHp, mobCode, LastKilledBossId, FrozenTotalPartyDamage);
         }
     }
 
@@ -1702,6 +1738,7 @@ public sealed class DpsAggregator
         Current = new Session();
         _boss.Reset();
         LastKilledBossId = null;
+        FrozenTotalPartyDamage = null;
         // Re-seed PlayerStats for canonical members so they keep their rows
         // through the reset (their NicknameRegistry entries / aliases persist;
         // PlayerStats were wiped by Current = new Session()).

@@ -103,24 +103,26 @@
     <SolidColorBrush x:Key="PodiumSilverBrush"  Color="#A8A09A"/>
     <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#9F6A3C"/>
 
-    <!-- Rank-별 막대 — cream/taupe (#E8DAD8) 배경에 대비되는 깊은 채도 톤.
-         밝은 BG 에는 어두운 막대가 정확히 식별됨. alpha 0x55 / 0xCC. -->
-    <SolidColorBrush x:Key="RankBar1Brush"      Color="#55C44569"/>  <!-- deep rose -->
-    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#CCC44569"/>
-    <SolidColorBrush x:Key="RankBar2Brush"      Color="#554A7C8E"/>  <!-- teal-blue -->
-    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#CC4A7C8E"/>
-    <SolidColorBrush x:Key="RankBar3Brush"      Color="#557D4A8E"/>  <!-- plum -->
-    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#CC7D4A8E"/>
-    <SolidColorBrush x:Key="RankBar4Brush"      Color="#555C8A4F"/>  <!-- forest -->
-    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#CC5C8A4F"/>
-    <SolidColorBrush x:Key="RankBar5Brush"      Color="#55C46B2C"/>  <!-- rust -->
-    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#CCC46B2C"/>
-    <SolidColorBrush x:Key="RankBar6Brush"      Color="#553D5A80"/>  <!-- indigo -->
-    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#CC3D5A80"/>
-    <SolidColorBrush x:Key="RankBar7Brush"      Color="#558B5A2B"/>  <!-- brown -->
-    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#CC8B5A2B"/>
-    <SolidColorBrush x:Key="RankBar8Brush"      Color="#554A4A4A"/>  <!-- charcoal -->
-    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#CC4A4A4A"/>
+    <!-- Rank-별 막대 — HSV 색상환 ~45° 등간격 8색으로 hue 최대 분리. cream/taupe
+         (#E8DAD8) BG 대비 700-shade 톤으로 어두운 막대. alpha 0x99 (60%) 로 기존
+         0x55 (33%) 보다 더 진하게. 사용자 보고 2026-05-23: 붉은계열 다 비슷하고
+         색 너무 흐림. -->
+    <SolidColorBrush x:Key="RankBar1Brush"      Color="#99B91C1C"/>  <!-- red -->
+    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#FFB91C1C"/>
+    <SolidColorBrush x:Key="RankBar2Brush"      Color="#990E7490"/>  <!-- cyan -->
+    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#FF0E7490"/>
+    <SolidColorBrush x:Key="RankBar3Brush"      Color="#996D28D9"/>  <!-- violet -->
+    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#FF6D28D9"/>
+    <SolidColorBrush x:Key="RankBar4Brush"      Color="#99166534"/>  <!-- green -->
+    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#FF166534"/>
+    <SolidColorBrush x:Key="RankBar5Brush"      Color="#99B45309"/>  <!-- amber -->
+    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#FFB45309"/>
+    <SolidColorBrush x:Key="RankBar6Brush"      Color="#991D4ED8"/>  <!-- blue -->
+    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#FF1D4ED8"/>
+    <SolidColorBrush x:Key="RankBar7Brush"      Color="#99BE185D"/>  <!-- pink -->
+    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#FFBE185D"/>
+    <SolidColorBrush x:Key="RankBar8Brush"      Color="#9944403C"/>  <!-- stone -->
+    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#FF44403C"/>
 
     <!-- Logo (AION2FUN wordmark) — warm rose family for the cream theme. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

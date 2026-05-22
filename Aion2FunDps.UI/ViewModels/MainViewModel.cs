@@ -274,13 +274,40 @@ public partial class MainViewModel : ObservableObject
         //   Party  : 파티 데미지 합 (기존, 합 100%)
         //   BossHp : 보스 HP 손실. 측정 누수가 있으면 합이 100% 미만 가능.
         // BossHp 모드여도 보스 HP 정보가 없으면 (idle / lobby) Party 모드로 폴백.
+        //
+        // **Post-kill 폴백** (v0.1.5 픽스): LastKilledBossId 가 박혀있으면 BossHp
+        // 모드여도 강제로 Party 모드로 떨어뜨림. 처치 후 focus 가 다른 작은 HP 엔티티
+        // (다음 던전의 잡몹, 잔여 entity 등) 로 옮겨가면 FocusedMaxHp 가 수백K 로
+        // 떨어져서 분모가 작아짐 → 지분 % 가 천 단위 % 로 폭주 (사용자 보고
+        // 2026-05-20: 13.6M / 361K * 100 = 3760% 표시). 처치 시점 분모는 다음 풀
+        // 시작까지 사용 안 함 — Party 모드의 안정적 합산이 더 의미 있음.
         long bossHpLost = 0;
+        bool postKill = bossSnap.LastKilledBossId.HasValue;
         bool useBossHp = ShareCalculationMode == "BossHp"
+                      && !postKill
                       && bossSnap.FocusedMaxHp > 0
                       && bossSnap.FocusedMaxHp > bossSnap.FocusedCurrentHp;
         if (useBossHp)
-            bossHpLost = bossSnap.FocusedMaxHp - bossSnap.FocusedCurrentHp;
-        long shareDenominator = useBossHp ? bossHpLost : totalCrewDamage;
+        {
+            // 다단계 보스 / phase HP 리셋 / 저감 / 오버킬 케이스에서 측정된 파티 데미지
+            // 합이 보스 HP 감소량을 초과할 수 있음 (사용자 보고 2026-05-22: 79.9M 합 /
+            // 38.1M HP loss = 합 209%). 측정 누수 (HP loss > damage) 일 때는 < 100%,
+            // 오버킬 (damage > HP loss) 일 때는 == 100% 가 되도록 분모 하한을 파티 합으로.
+            long hpLost = bossSnap.FocusedMaxHp - bossSnap.FocusedCurrentHp;
+            bossHpLost = Math.Max(hpLost, totalCrewDamage);
+        }
+
+        // Post-kill 분모 freeze: OnBossKilled 시점에 캡쳐된 파티 합산. 멤버가 나가도
+        // 분모 고정 → % 가 변하지 않음 (사용자 보고 2026-05-22: "한명나가니깐 내가
+        // 지분율 높은쪽에 가고 막 다 엉퀸거 같아"). freeze 값이 없거나 ResetCore 후엔
+        // null → 일반 totalCrewDamage 사용.
+        long shareDenominator;
+        if (useBossHp)
+            shareDenominator = bossHpLost;
+        else if (postKill && bossSnap.FrozenTotalPartyDamage is long frozen && frozen > 0)
+            shareDenominator = frozen;
+        else
+            shareDenominator = totalCrewDamage;
         if (shareDenominator <= 0) shareDenominator = 1;
 
         // Resolve primary (registered self OR most-hits heuristic)
@@ -310,10 +337,16 @@ public partial class MainViewModel : ObservableObject
         // 펫 스킬을 Unknown 으로 분류해 50% 기준을 못 넘기게 함.)
         bool bossEngaged = bossTargetId.HasValue;
         bool inActiveCombat = bossSnap.FocusedEntityId.HasValue;
+        // bossEngaged 포함시켜서 post-kill (FocusedEntityId=none 이지만 LastKilledBossId
+        // 박혀있는 윈도) 에도 LooksLikePlayer actor 가 surface 유지. 사용자 보고
+        // 2026-05-22: 마지막 보스 처치 후 한 명 나가면 그 행이 사라지던 문제 — registry
+        // 없는 actor 가 active-combat 게이트만 만족하다 처치 후 inActiveCombat=false 가
+        // 되면서 필터아웃됨.
+        bool keepLooksLikePlayer = inActiveCombat || bossEngaged;
         crew = crew.Where(row =>
             _aggregator.Registry.GetEntry(row.Player.ActorId) != null
             || (bossEngaged && primary != null && primary.ActorId == row.Player.ActorId)
-            || (inActiveCombat && row.Player.LooksLikePlayer))
+            || (keepLooksLikePlayer && row.Player.LooksLikePlayer))
             .ToList();
 
         // No UI dedupe needed: NicknameRegistry's canonical-id model collapses
@@ -332,7 +365,14 @@ public partial class MainViewModel : ObservableObject
             if (topDps <= 0) topDps = 1;
             totalCrewDamage = crew.Sum(row => row.Damage);
             if (totalCrewDamage <= 0) totalCrewDamage = 1;
-            shareDenominator = useBossHp ? bossHpLost : totalCrewDamage;
+            // 위에서 정한 freeze / mode 로직 재적용 — 필터 후 crew 가 줄어도 분모는
+            // 같은 우선순위 (BossHp → frozen post-kill → live totalCrewDamage).
+            if (useBossHp)
+                shareDenominator = bossHpLost;
+            else if (postKill && bossSnap.FrozenTotalPartyDamage is long frozen2 && frozen2 > 0)
+                shareDenominator = frozen2;
+            else
+                shareDenominator = totalCrewDamage;
             if (shareDenominator <= 0) shareDenominator = 1;
         }
 

@@ -81,23 +81,25 @@
     <SolidColorBrush x:Key="PodiumBronzeBrush"  Color="#D08A4B"/>
 
     <!-- Rank-별 시각 식별 막대 (Bar A) + edge highlight.
-         deep navy 배경에 대비되는 밝은 채도 8색. alpha 0x55 (bar) / 0xCC (edge). -->
-    <SolidColorBrush x:Key="RankBar1Brush"      Color="#55FFD66B"/>
-    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#CCFFD66B"/>
-    <SolidColorBrush x:Key="RankBar2Brush"      Color="#555BC0DE"/>
-    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#CC5BC0DE"/>
-    <SolidColorBrush x:Key="RankBar3Brush"      Color="#55F06292"/>
-    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#CCF06292"/>
-    <SolidColorBrush x:Key="RankBar4Brush"      Color="#559CCC65"/>
-    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#CC9CCC65"/>
-    <SolidColorBrush x:Key="RankBar5Brush"      Color="#55FF8A65"/>
-    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#CCFF8A65"/>
-    <SolidColorBrush x:Key="RankBar6Brush"      Color="#55BA68C8"/>
-    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#CCBA68C8"/>
-    <SolidColorBrush x:Key="RankBar7Brush"      Color="#55FFEE58"/>
-    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#CCFFEE58"/>
-    <SolidColorBrush x:Key="RankBar8Brush"      Color="#5590A4AE"/>
-    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#CC90A4AE"/>
+         HSV 색상환 ~45° 등간격 8색. deep navy BG 대비 밝은 톤 (500-shade).
+         alpha 0x99 (60%) 로 기존 0x55 (33%) 보다 더 진하게.
+         사용자 보고 2026-05-23: 색 너무 흐리고 비슷한 색끼리 식별 어려움. -->
+    <SolidColorBrush x:Key="RankBar1Brush"      Color="#99FF6B6B"/>  <!-- red -->
+    <SolidColorBrush x:Key="RankBar1EdgeBrush"  Color="#FFFF6B6B"/>
+    <SolidColorBrush x:Key="RankBar2Brush"      Color="#994ECDC4"/>  <!-- cyan -->
+    <SolidColorBrush x:Key="RankBar2EdgeBrush"  Color="#FF4ECDC4"/>
+    <SolidColorBrush x:Key="RankBar3Brush"      Color="#99C77DFF"/>  <!-- violet -->
+    <SolidColorBrush x:Key="RankBar3EdgeBrush"  Color="#FFC77DFF"/>
+    <SolidColorBrush x:Key="RankBar4Brush"      Color="#9951CF66"/>  <!-- green -->
+    <SolidColorBrush x:Key="RankBar4EdgeBrush"  Color="#FF51CF66"/>
+    <SolidColorBrush x:Key="RankBar5Brush"      Color="#99FFA94D"/>  <!-- amber -->
+    <SolidColorBrush x:Key="RankBar5EdgeBrush"  Color="#FFFFA94D"/>
+    <SolidColorBrush x:Key="RankBar6Brush"      Color="#995C7CFA"/>  <!-- blue -->
+    <SolidColorBrush x:Key="RankBar6EdgeBrush"  Color="#FF5C7CFA"/>
+    <SolidColorBrush x:Key="RankBar7Brush"      Color="#99F783AC"/>  <!-- pink -->
+    <SolidColorBrush x:Key="RankBar7EdgeBrush"  Color="#FFF783AC"/>
+    <SolidColorBrush x:Key="RankBar8Brush"      Color="#99ADB5BD"/>  <!-- gray -->
+    <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#FFADB5BD"/>
 
     <!-- Logo (AION2FUN wordmark) — cool blue family. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

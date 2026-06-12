@@ -45,7 +45,6 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private long lastTickTotalEvents;
     [ObservableProperty] private long eventsPerSecond;
     [ObservableProperty] private string nickDebugInfo = "nick: 0/0 self, 0/0 other";
-    [ObservableProperty] private bool autoResetOnBoss = true;
     [ObservableProperty] private bool showAutoResetFlash;
     [ObservableProperty] private double windowOpacity = 1.0;   // 0.2..1.0, bound to Window.Opacity in XAML
     [ObservableProperty] private bool isCompact;               // collapse-to-titlebar mode (replaces native minimize)
@@ -70,6 +69,16 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string? currentDungeonName;
     public bool HasDungeon => !string.IsNullOrEmpty(CurrentDungeonName);
     partial void OnCurrentDungeonNameChanged(string? value) => OnPropertyChanged(nameof(HasDungeon));
+
+    /// <summary>cold-start 진단: 보스 fight 중인데 PartyAssembly 미도착. UI 가 "파티 정보
+    /// 불러오는 중..." 안내 표시. PartyAssembly 도착 시 자동 false.</summary>
+    [ObservableProperty] private bool isResolvingParty;
+
+    /// <summary>share% 진단 로그 path. set 되면 매 1초 share% 합 / 분모 / crew 상태 한 줄
+    /// 기록. 합 &gt; 100% 폭증의 정확한 path 식별 (stabilization 가드 풀리는 시점, 분모 선택
+    /// 분기, crew row 수 vs 데미지 누적 상태 등).</summary>
+    public string? ShareDebugLogPath { get; set; }
+    private DateTime _lastShareDebugAt = DateTime.MinValue;
     public bool IsContentVisible => !IsCompact;
     partial void OnIsCompactChanged(bool value) => OnPropertyChanged(nameof(IsContentVisible));
     private DateTime? _shownAutoResetAt;
@@ -78,8 +87,6 @@ public partial class MainViewModel : ObservableObject
     /// engaged but the user hasn't landed a hit yet. Negative so it can never collide
     /// with a real entityId from the wire.</summary>
     private const int SelfPlaceholderActorId = -1;
-
-    partial void OnAutoResetOnBossChanged(bool value) => _aggregator.AutoResetOnBoss = value;
 
     public MainViewModel(
         DpsAggregator aggregator,
@@ -135,6 +142,18 @@ public partial class MainViewModel : ObservableObject
         : v >= 1_000   ? $"{v / 1_000.0:F1}K"
                        : ((long)v).ToString("N0");
 
+    /// <summary>한국식 DPS 표기 (값/단위 분리 — 단위 디밍 타이포용): 152,300 → ("15.2","만").</summary>
+    private static (string Value, string Unit) FormatDpsKr(double v) =>
+        v >= 100_000_000 ? ($"{v / 100_000_000.0:F2}", "억")
+        : v >= 10_000    ? ($"{v / 10_000.0:F1}", "만")
+                         : (((long)v).ToString("N0"), string.Empty);
+
+    /// <summary>한국식 총딜 표기: 137,270,000 → ("1.4","억"), 66,650,000 → ("6,665","만").</summary>
+    private static (string Value, string Unit) FormatTotalKr(long v) =>
+        v >= 100_000_000 ? ($"{v / 100_000_000.0:F1}", "억")
+        : v >= 10_000    ? ((v / 10_000).ToString("N0"), "만")
+                         : (v.ToString("N0"), string.Empty);
+
     private void Refresh()
     {
         // Drop _partyMembers entries that have stopped appearing in any
@@ -144,6 +163,11 @@ public partial class MainViewModel : ObservableObject
         // Internally gated to lobby-only — it skips during boss fights and
         // post-kill display holds so it can't prune rows mid-fight.
         _aggregator.EvictStaleMembers();
+
+        // Phase 2 — view 빌드 (UI 는 아직 안 읽음, 검증 로그만). DEBUG 빌드에선 ViewVerificationLogPath
+        // 가 박혀 1초마다 view vs mutable state diff 한 줄 기록. Release 에선 path null 이라
+        // 호출 자체는 가벼움 (풀빌드 O(n) 만 발생).
+        _ = _aggregator.BuildView();
 
         // Pull leak counters from upstream
         _aggregator.RefreshAccuracy(
@@ -156,6 +180,11 @@ public partial class MainViewModel : ObservableObject
         // the user is in a room. Cleared on PartyLeft.
         if (CurrentDungeonName != _aggregator.CurrentDungeonName)
             CurrentDungeonName = _aggregator.CurrentDungeonName;
+
+        // Cold-start 진단 신호. 보스 fight 중인데 PartyAssembly 미도착 → 화면에
+        // "파티 정보 불러오는 중..." 안내. PartyAssembly 도착하면 자동 false.
+        bool resolving = _aggregator.IsResolvingParty;
+        if (IsResolvingParty != resolving) IsResolvingParty = resolving;
 
         // Confidence — only display while a boss fight is actively being measured
         // (HasDriftSignal = boss focused + damage being tracked). In town/idle the
@@ -309,6 +338,14 @@ public partial class MainViewModel : ObservableObject
         else
             shareDenominator = totalCrewDamage;
         if (shareDenominator <= 0) shareDenominator = 1;
+
+        // ResetCore 직후 share% 안정화 가드 (사용자 보고 2026-05-31: 멀티-보스 1보스 잡고
+        // 새 fight 첫 1-2초 동안 본인 share=100% 폭증). totalCrewDamage 가 본인 첫 hit
+        // 한 번만으로 시작 → 본인=100%, 동료 3명=0% (수학적으로 정상이지만 사용자 눈엔
+        // 폭증). 1.5초간 share% 갱신 skip → 직전 fight 값 유지 → 데이터 안정 후 자연 전환.
+        var lastReset = _aggregator.LastAutoResetAt;
+        bool inShareStabilization = lastReset.HasValue
+            && DateTime.UtcNow - lastReset.Value < TimeSpan.FromMilliseconds(1500);
 
         // Resolve primary (registered self OR most-hits heuristic)
         var primary = _aggregator.ResolvePrimary();
@@ -485,7 +522,8 @@ public partial class MainViewModel : ObservableObject
             // (detectedClass 위에서 이미 계산됨 — name fallback 에 사용했고 아래
             //  vm.ClassColorHex 등 setter 에도 그대로 재사용.)
 
-            // Build tooltip showing top skills with names — helps user verify class detection
+            // Build tooltip showing top skills with names — helps user verify class detection.
+            // 전투력은 앰비언트 글래스 리디자인에서 행 컬럼 → 툴팁으로 이동 (행 밀도 절감).
             var topSkills = p.Skills.Values
                 .OrderByDescending(s => s.TotalDamage)
                 .Take(8)
@@ -494,7 +532,9 @@ public partial class MainViewModel : ObservableObject
                     var skillName = info?.Name ?? $"#{s.SkillCode}";
                     return $"{skillName}: {s.TotalDamage:N0} ({s.HitCount}회)";
                 });
-            string skillsTip = $"감지: {JobClassDetector.GetKoreanName(detectedClass)}\n" +
+            int cpForTip = entry?.CombatPower ?? 0;
+            string cpLine = cpForTip > 0 ? $"전투력: {FormatCombatPower(cpForTip)}\n" : string.Empty;
+            string skillsTip = $"감지: {JobClassDetector.GetKoreanName(detectedClass)}\n" + cpLine +
                                string.Join("\n", topSkills);
 
             vm.Rank = rank;
@@ -506,20 +546,68 @@ public partial class MainViewModel : ObservableObject
             vm.ClassChar = JobClassDetector.GetShortChar(detectedClass);
             vm.ClassName = JobClassDetector.GetKoreanName(detectedClass);
             vm.ClassColorHex = JobClassDetector.GetColorHex(detectedClass);
+            vm.BrightClassColorHex = JobClassDetector.GetBrightColorHex(detectedClass);
             vm.TopSkillsTooltip = skillsTip;
             vm.TotalDamage = row.Damage;
             vm.TotalDamageDisplay = FormatCompact(row.Damage);
+            (vm.TotalValue, vm.TotalUnit) = FormatTotalKr(row.Damage);
             vm.Dps = row.Dps;
             vm.DpsDisplay = FormatCompact(row.Dps);
+            (vm.DpsValue, vm.DpsUnit) = FormatDpsKr(row.Dps);
             vm.HitCount = p.HitCount;
             vm.CritRate = p.CritRate;
             vm.BackAttackRate = p.BackAttackRate;
             vm.DamageBarPercent = (double)row.Damage / topDamage * 100;
             vm.DpsBarPercent = row.Dps / topDps * 100;
-            vm.DamageSharePercent = (double)row.Damage / shareDenominator * 100;
+            // stabilization 윈도 안에서는 share% 갱신 skip — 이전 값 유지 (직전 fight 값
+            // 잠깐 보이다가 안정화 후 새 값으로 자연 전환).
+            if (!inShareStabilization)
+            {
+                // postKill 구간에선 분자도 kill-moment snapshot 사용 — 분모 (FrozenTotalPartyDamage)
+                // 와 같은 시점이라 합 = 100% 보장. 쫄몹/다음보스 데미지가 row.Damage 에 누적
+                // 돼도 share% 폭증 없음. snapshot 0 (= 처치 시점 멤버 X 또는 데미지 0) 이면
+                // live damage fallback.
+                long shareNumerator = (postKill && p.FrozenDamageForShare > 0)
+                    ? p.FrozenDamageForShare
+                    : row.Damage;
+                vm.DamageSharePercent = (double)shareNumerator / shareDenominator * 100;
+            }
+            vm.ShareValue = vm.DamageSharePercent.ToString("F1");
+            // 지분 히트 티어 (B-3, 2026-06-12) — 고정 % 가 아니라 파티 평균 대비 상대값.
+            // 4인팟이든 8인팟이든 "평균의 1.4배 이상 = 캐리(금) / 0.85배 이상 = 은 / 그 외 중립".
+            double avgShare = 100.0 / Math.Max(1, crew.Count);
+            vm.ShareTier = vm.DamageSharePercent >= avgShare * 1.4 ? 2
+                         : vm.DamageSharePercent >= avgShare * 0.85 ? 1 : 0;
             int cp = entry?.CombatPower ?? 0;
             vm.CombatPower = cp;
             vm.CombatPowerDisplay = cp > 0 ? FormatCombatPower(cp) : string.Empty;
+        }
+
+        // share% 진단 로그 — 1초마다 한 줄. 합 > 100% 폭증 시점 / 분모 선택 / crew 상태 식별.
+        if (ShareDebugLogPath != null)
+        {
+            var nowDbg = DateTime.UtcNow;
+            if (nowDbg - _lastShareDebugAt >= TimeSpan.FromSeconds(1))
+            {
+                _lastShareDebugAt = nowDbg;
+                try
+                {
+                    double sharePctSum = 0;
+                    int rowsCounted = 0;
+                    foreach (var p in Players)
+                    {
+                        if (p.ActorId == SelfPlaceholderActorId) continue;
+                        sharePctSum += p.DamageSharePercent;
+                        rowsCounted++;
+                    }
+                    string denomSource = useBossHp ? "bossHp"
+                        : (postKill && bossSnap.FrozenTotalPartyDamage.HasValue && bossSnap.FrozenTotalPartyDamage.Value > 0 ? "frozen" : "live");
+                    string resetStr = lastReset.HasValue ? lastReset.Value.ToString("HH:mm:ss.fff") : "null";
+                    System.IO.File.AppendAllText(ShareDebugLogPath,
+                        $"{DateTime.Now:HH:mm:ss.fff} crew={crew.Count} rows={rowsCounted} denom={shareDenominator}({denomSource}) totalCrew={totalCrewDamage} sumPct={sharePctSum:F1} stab={(inShareStabilization?"T":"F")} resetAt={resetStr}\n");
+                }
+                catch { }
+            }
         }
 
         // Sort: ObservableCollection doesn't have Sort, but we can ensure order via Move
@@ -569,6 +657,13 @@ public partial class MainViewModel : ObservableObject
             ph.TotalDamageDisplay = "0";
             ph.Dps = 0;
             ph.DpsDisplay = "0";
+            ph.BrightClassColorHex = JobClassDetector.GetBrightColorHex(JobClass.Unknown);
+            ph.DpsValue = "0";
+            ph.DpsUnit = string.Empty;
+            ph.TotalValue = "0";
+            ph.TotalUnit = string.Empty;
+            ph.ShareValue = "0.0";
+            ph.ShareTier = 0;
             ph.HitCount = 0;
             ph.CritRate = 0;
             ph.BackAttackRate = 0;

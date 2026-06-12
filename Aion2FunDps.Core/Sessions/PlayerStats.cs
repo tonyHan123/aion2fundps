@@ -34,6 +34,19 @@ public sealed class PlayerStats
 
     public PlayerStats(int actorId) { ActorId = actorId; }
 
+    /// <summary>
+    /// 보스 처치 시점 TotalDamage snapshot. share% 분자로 사용 — 분모 (FrozenTotalPartyDamage)
+    /// 와 같은 시점 freeze 로 합 = 100% 보장. ResetCore 가 Current = new Session() 하므로
+    /// 새 fight 시작 시 자동 0 (별도 clear 불필요).
+    ///
+    /// 사용자 보고 2026-06-01 멀티-보스 던전: 1보스 처치 후 쫄몹/2보스 치면서 row.Damage 가
+    /// frozen 분모 대비 누적 증가 → share% 합 100% → 270% 폭증. snapshot 으로 분자 freeze
+    /// 해서 수학적으로 합 100% 보장.
+    /// </summary>
+    public long FrozenDamageForShare { get; private set; }
+
+    public void SnapshotDamageForShare() => FrozenDamageForShare = TotalDamage;
+
     public void Apply(DamageEvent evt)
     {
         // Note: we deliberately do NOT clear _frozenDps / _frozenTargetDps here.

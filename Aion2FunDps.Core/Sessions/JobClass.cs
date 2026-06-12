@@ -140,4 +140,22 @@ public static class JobClassDetector
         JobClass.Songweaver   => "#2874A6", // dark blue
         _ => "#566573",                     // dark gray
     };
+
+    /// <summary>
+    /// 앰비언트 글래스 행 막대/아이콘용 브라이트 팔레트 (다크 BG 기준).
+    /// v2 (2026-06-12): 이웃 색 쌍 분리 — 살성 보라↔마도성 핑크, 수호 진주황↔치유 노랑,
+    /// 정령 청록↔호법 진파랑. 디자인 결정 기록은 docs/ambient-glass-context.md.
+    /// </summary>
+    public static string GetBrightColorHex(JobClass jc) => jc switch
+    {
+        JobClass.Gladiator    => "#FF5252", // 빨강
+        JobClass.Guardian     => "#FF7E29", // 진주황
+        JobClass.Assassin     => "#9775FA", // 보라
+        JobClass.Archer       => "#4ED44E", // 초록
+        JobClass.Sorcerer     => "#F0609E", // 핑크
+        JobClass.Spiritmaster => "#20C9B0", // 청록
+        JobClass.Cleric       => "#FFD43B", // 노랑
+        JobClass.Songweaver   => "#4D8DFF", // 진파랑
+        _ => "#9AA5B2",                     // 중립 그레이
+    };
 }

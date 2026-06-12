@@ -28,4 +28,14 @@ public partial class PlayerRowViewModel : ObservableObject
     [ObservableProperty] private double damageSharePercent; // 0..100, share of total displayed crew damage
     [ObservableProperty] private int combatPower;            // 0 if unknown
     [ObservableProperty] private string combatPowerDisplay = string.Empty;  // "158.5k" formatted
+
+    // ── 앰비언트 글래스 (2026-06-12 리디자인) ────────────────────────────
+    // 숫자는 값/단위 Run 2개로 분리 렌더 (단위 디밍 타이포). 한국식 만/억 단위.
+    [ObservableProperty] private string brightClassColorHex = "#9AA5B2";   // 행 막대/팁 — 클래스 고정 색
+    [ObservableProperty] private string dpsValue = "0";                    // "15.2"
+    [ObservableProperty] private string dpsUnit = string.Empty;            // "만"
+    [ObservableProperty] private string totalValue = "0";                  // "6665"
+    [ObservableProperty] private string totalUnit = string.Empty;          // "만"
+    [ObservableProperty] private string shareValue = "0.0";                // "11.1" (% 는 XAML 리터럴)
+    [ObservableProperty] private int shareTier;                            // 0=중립 1=은 2=금 (파티 평균 대비)
 }

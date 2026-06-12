@@ -360,6 +360,35 @@ public sealed class NicknameRegistry
 
     /// <summary>Enumerates canonical entries (one per nickname).</summary>
     public IEnumerable<KeyValuePair<int, NicknameEntry>> All => _entries;
+
+    /// <summary>
+    /// External self-nickname signal — 패킷 외부 source (게임 윈도우 title, NCSoft API, 사용자
+    /// 설정 등) 로부터 self nickname 명시적 식별. cold-start 의 진짜 해결책 — packet 분석 의존
+    /// 0, 미터 시작 즉시 self 확정. 다른 미터들이 못 하는 차별점 (사용자 보고 2026-06-05:
+    /// "다른 미터들도 다 같은 한계, 우리만의 창의적 기술로 해결").
+    ///
+    /// 동작.
+    ///   - SelfNickname 즉시 설정. RecordSelfNickCandidates 의 frequency-based 추론보다 우선.
+    ///   - 이미 등록된 entry 중 같은 nickname 있으면 SelfUserId 도 즉시 박음.
+    ///   - 등록 안 됐으면 다음 NicknameInfo Register 시 자동 match (기존 로직 line 183-190).
+    ///   - 호출 시점 self nickname 과 같으면 no-op (idempotent).
+    /// </summary>
+    public void SetSelfNicknameFromExternalSource(string nickname)
+    {
+        if (string.IsNullOrWhiteSpace(nickname)) return;
+        var normalized = nickname.Trim();
+        if (SelfNickname == normalized) return;
+        SelfNickname = normalized;
+        // 이미 등록된 entry 중 매칭 — 즉시 SelfUserId 박음.
+        foreach (var (id, entry) in _entries)
+        {
+            if (entry.Nickname == normalized)
+            {
+                SelfUserId = id;
+                return;
+            }
+        }
+    }
 }
 
 public sealed record NicknameEntry(string Nickname, bool IsSelf, int Server, int Job, int CombatPower);

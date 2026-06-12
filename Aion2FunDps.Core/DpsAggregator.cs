@@ -1,3 +1,4 @@
+using Aion2FunDps.Core.EventSourcing;
 using Aion2FunDps.Core.Models;
 using Aion2FunDps.Core.Repositories;
 using Aion2FunDps.Core.Sessions;
@@ -40,6 +41,26 @@ public sealed class DpsAggregator
     private readonly EntityRegistry _entities;
     private readonly BossTracker _boss;
     private readonly AccuracyEstimator _accuracy;
+    /// <summary>
+    /// Event sourcing shadow store (Phase 1). 기존 mutable state 와 병행 동작 —
+    /// OnEvent 끝에서 raw event 를 그대로 append 만. 아직 view 빌드 / UI 읽기 없음.
+    /// Phase 2 에서 ViewBuilder 가 이 위에서 SessionView 를 구성.
+    /// </summary>
+    private readonly RawEventStore _rawEventStore = new();
+    private readonly AliasLog _aliasLog = new();
+    public RawEventStore RawEvents => _rawEventStore;
+    public AliasLog Aliases => _aliasLog;
+
+    /// <summary>Phase 2 검증 로그 — view 와 mutable state 의 TotalDamage 합 / 행 수 mismatch 발견용.
+    /// 호출자 (App.xaml.cs) 가 path 박으면 BuildView() 호출마다 한 줄.</summary>
+    public string? ViewVerificationLogPath { get; set; }
+    private DateTime _lastViewVerifyAt = DateTime.MinValue;
+
+    /// <summary>Identity resolution 진단 — 보스 처치 시점에 _partyMembers 4명 lobby canonical
+    /// 의 등록 정보 + 모든 alias raw_ids + 해당 fight 동안 등장한 unresolved player-like
+    /// actor 들의 signature dump. 사용자 보고 "DPS 낮다" (= 우리 파티원의 dungeon-id 가
+    /// lobby canonical 에 alias 안 잡혀서 데미지 별도 row 에 누적) 의 root cause 식별용.</summary>
+    public string? IdentityDebugLogPath { get; set; }
     /// <summary>
     /// Canonical entity_ids of confirmed party members. Populated by
     /// nickname-bearing events (SELF_NICK / op=0297 / op=01 92) and by the
@@ -122,6 +143,14 @@ public sealed class DpsAggregator
 
     /// <summary>Set briefly when an auto-reset just fired — UI can flash a notification.</summary>
     public DateTime? LastAutoResetAt { get; private set; }
+
+    /// <summary>
+    /// Cold-start 진단 신호 — 보스 fight 가 진행 중인데 PartyAssembly 명단이 아직 도착하지
+    /// 않은 상태. true 인 동안 _partyMembers 추가는 self 만 통과 (cold-start C 정책).
+    /// UI 는 이 값을 보고 "파티 정보 불러오는 중..." 안내 표시. PartyAssembly 도착 시
+    /// _currentMatchmakingRoom 이 set 되어 자연스럽게 false 로 전환.
+    /// </summary>
+    public bool IsResolvingParty => _boss.IsBossMode && !_currentMatchmakingRoom.HasValue;
 
     /// <summary>
     /// Wall-clock timestamp of the most recent boss kill. Used as a
@@ -447,6 +476,8 @@ public sealed class DpsAggregator
         int canonical = _registry.Register(nick);
         if (canonical != incoming)
         {
+            // Phase 1 shadow — alias 도 AliasLog 에 기록. 패킷 컨텍스트로 source 추정.
+            _aliasLog.Record(incoming, canonical, InferNicknameSource(nick), nick.TimestampTicks);
             // Merge orphan stats (cold-start damage that landed on the raw
             // entity_id before nickname registration) into the canonical
             // row. Earlier code DELETED the orphan, losing tank/opener burst
@@ -480,6 +511,11 @@ public sealed class DpsAggregator
         //   LastKilledBossId 가 있었다면 PARTY_LEFT 무시되고 멤버 유지됨.
         LastKilledBossId = bossId;
         _lastBossKilledAt = DateTime.UtcNow;
+        _rawEventStore.Record(new RawBossKill(DateTime.UtcNow.Ticks, bossId));
+
+        // 진단. fight 종료 시점에 identity resolution 의 결과 / 누락 dump. 사용자 보고
+        // root cause 식별 후 제거.
+        DumpIdentitySnapshot(bossId);
 
         // Freeze/pin 은 auto-reset 모드에서만. cumulative 모드는 다음 보스로 누적이
         // 계속되어야 하므로 여기서 freeze 하면 DPS 가 첫 처치 시점에 박힌 채로
@@ -494,7 +530,14 @@ public sealed class DpsAggregator
         foreach (var memberId in _partyMembers)
         {
             var ps = Current.GetExisting(memberId);
-            if (ps != null) partySum += ps.TotalDamage;
+            if (ps != null)
+            {
+                partySum += ps.TotalDamage;
+                // 분자도 같은 시점 snapshot. share% 분모 (FrozenTotalPartyDamage) 와 같은
+                // 시점이라 합 = 100% 보장. 이후 쫄몹/다음보스 데미지가 row.TotalDamage 에
+                // 누적돼도 snapshot 은 freeze 되어 share% 안 흔들림.
+                ps.SnapshotDamageForShare();
+            }
         }
         FrozenTotalPartyDamage = partySum > 0 ? partySum : (long?)null;
 
@@ -511,6 +554,8 @@ public sealed class DpsAggregator
 
     private void OnNewBossDetected(int bossId)
     {
+        _rawEventStore.Record(new RawBossEngaged(DateTime.UtcNow.Ticks, bossId));
+
         // Link this boss entityId to the most recently announced encounter mob_code.
         // The announce packet (0x01 0x91) typically arrives just before the boss's
         // first MOB_HP packet; if it didn't (multi-pull/stale encounter), no link.
@@ -642,6 +687,7 @@ public sealed class DpsAggregator
 
         // 1. alias 등록 — 이후 proxy id 로 들어오는 damage 도 canonical 로 해소
         _registry.AddAlias(proxy, canonical);
+        _aliasLog.Record(proxy, canonical, AliasSource.Proxy, DateTime.UtcNow.Ticks);
 
         // 2. PlayerStats 데이터 이전
         var proxyStats = Current.GetExisting(proxy);
@@ -662,6 +708,92 @@ public sealed class DpsAggregator
 
         _proxySelfActorId = null;
         _proxyAdoptedAt = null;
+    }
+
+    private DateTime _lastJobMatchAt = DateTime.MinValue;
+
+    /// <summary>
+    /// 잡 매칭 페어링 (2026-06-12 긴급 복구 경로).
+    ///
+    /// 게임 업데이트로 던전 인스턴스 안의 actor↔닉 매핑 패킷이 두절 (19:15 세션 분석:
+    /// 보스딜 87~91% 가 unresolved, 파티원 3명 alias 0개·딜 0). 로비 명단(op=0297)은
+    /// job 코드를 갖고 있고 unresolved actor 는 스킬 코드로 클래스 추정이 가능하므로,
+    /// 클래스가 파티 내에서 유일하면 1:1 페어링으로 복구한다.
+    ///
+    /// 안전장치.
+    ///   - 같은 클래스 미배정 멤버 2+ → 그 클래스 전체 스킵 (모호).
+    ///   - 후보 = llp=T + 닉 미상 + **현재 포커스 보스 타격 실적** (옆파티 오귀속 최소화.
+    ///     같은 클래스 옆파티원이 더 센 경우 오귀속 가능성 잔존 — JOB_MATCH_ADOPT 로그로
+    ///     검증하고, 근본 픽스는 새 opcode 리버싱 후 이 경로를 fallback 으로 강등).
+    ///   - 같은 클래스 후보 다수 (정령성 본체+소환수 등) → 최다 데미지 1개만 채택,
+    ///     나머지는 unresolved 유지.
+    /// 병합 메커니즘은 TryMergeProxyToSelf 와 동일 (AddAlias + MergeFrom + Remove).
+    /// </summary>
+    private void TryJobMatchAdoption()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastJobMatchAt < TimeSpan.FromSeconds(2)) return;
+        _lastJobMatchAt = now;
+
+        if (_boss.FocusedEntityId is not int bossId) return;   // 보스전 중에만
+        if (_partyMembers.Count < 2) return;
+
+        // 1. 미배정 멤버 — 딜 0 + job 확보.
+        Dictionary<JobClass, List<int>>? byClass = null;
+        foreach (var canonicalId in _partyMembers)
+        {
+            var memberStats = Current.GetExisting(canonicalId);
+            if (memberStats != null && memberStats.HitCount > 0) continue;
+            var entry = _registry.GetEntry(canonicalId);
+            if (entry == null || entry.Job <= 0) continue;
+            var cls = JobClassDetector.FromGameJobCode(entry.Job);
+            if (cls == JobClass.Unknown) continue;
+            byClass ??= new Dictionary<JobClass, List<int>>();
+            if (!byClass.TryGetValue(cls, out var list)) byClass[cls] = list = new List<int>();
+            list.Add(canonicalId);
+        }
+        if (byClass == null) return;
+
+        // 2. 후보 — 파티 밖 + 닉 미상 + player-like + 이 보스 타격 실적.
+        Dictionary<JobClass, PlayerStats>? topCandidate = null;
+        foreach (var stats in Current.AllPlayers)
+        {
+            if (_partyMembers.Contains(stats.ActorId)) continue;
+            if (stats.HitCount < 5 || !stats.LooksLikePlayer) continue;
+            if (_registry.GetEntry(stats.ActorId) != null) continue;
+            if (stats.GetDamageToTarget(bossId) <= 0) continue;
+            var cls = JobClassDetector.Detect(stats.Skills.Keys);
+            if (cls == JobClass.Unknown || !byClass.ContainsKey(cls)) continue;
+            topCandidate ??= new Dictionary<JobClass, PlayerStats>();
+            if (!topCandidate.TryGetValue(cls, out var best) || stats.TotalDamage > best.TotalDamage)
+                topCandidate[cls] = stats;
+        }
+        if (topCandidate == null) return;
+
+        // 3. 클래스 유일 멤버 ↔ 최다 데미지 후보 1:1 채택 + 병합.
+        foreach (var kv in topCandidate)
+        {
+            var members = byClass[kv.Key];
+            if (members.Count != 1) continue;   // 동일 클래스 멤버 2+ = 모호
+            int canonicalId = members[0];
+            int rawId = kv.Value.ActorId;
+
+            _registry.AddAlias(rawId, canonicalId);
+            _aliasLog.Record(rawId, canonicalId, AliasSource.JobMatch, now.Ticks);
+            Current.GetOrCreate(canonicalId).MergeFrom(kv.Value);
+            Current.Remove(rawId);
+            TouchMember(canonicalId);
+
+            if (RosterDebugLogPath != null)
+            {
+                try
+                {
+                    System.IO.File.AppendAllText(RosterDebugLogPath,
+                        $"{DateTime.Now:HH:mm:ss.fff} JOB_MATCH_ADOPT raw={rawId} canon={canonicalId} nick={_registry.GetName(canonicalId)} class={kv.Key} dmg={kv.Value.TotalDamage}\n");
+                }
+                catch { }
+            }
+        }
     }
 
     /// <summary>
@@ -774,6 +906,50 @@ public sealed class DpsAggregator
         _accuracy.HasDriftSignal = driftMeasurable;
 
         _accuracy.Recompute();
+    }
+
+    /// <summary>
+    /// Phase 2 — ViewBuilder 풀빌드. UI tick 에서 호출. 기존 mutable state 와 병렬 운영.
+    /// ViewVerificationLogPath 가 박혀 있으면 1초마다 sanity diff 한 줄 기록.
+    /// </summary>
+    public SessionView BuildView()
+    {
+        SessionView view;
+        long mutableTotal;
+        int mutableRows;
+        lock (_stateLock)
+        {
+            view = ViewBuilder.Build(_rawEventStore, _aliasLog, _boss, _registry, _summons, _entities);
+            mutableTotal = 0;
+            mutableRows = 0;
+            foreach (var p in Current.AllPlayers)
+            {
+                mutableTotal += p.TotalDamage;
+                mutableRows++;
+            }
+        }
+
+        if (ViewVerificationLogPath != null)
+        {
+            var now = DateTime.UtcNow;
+            if (now - _lastViewVerifyAt >= TimeSpan.FromSeconds(1))
+            {
+                _lastViewVerifyAt = now;
+                long viewTotal = view.TotalDamage;
+                int viewRows = view.PlayerStats.Count;
+                long diff = viewTotal - mutableTotal;
+                int rowDiff = viewRows - mutableRows;
+                string status = (diff == 0 && rowDiff == 0) ? "MATCH" : "DIFF";
+                try
+                {
+                    System.IO.File.AppendAllText(ViewVerificationLogPath,
+                        $"{DateTime.Now:HH:mm:ss.fff} {status,-5} viewTotal={viewTotal} mutTotal={mutableTotal} diff={diff} viewRows={viewRows} mutRows={mutableRows} rowDiff={rowDiff} events={view.TotalEventsApplied} aliases={_aliasLog.TotalCount}\n");
+                }
+                catch { }
+            }
+        }
+
+        return view;
     }
 
     public void OnEvent(IGameEvent evt)
@@ -908,23 +1084,68 @@ public sealed class DpsAggregator
                     //    임시). 둘 다 없으면 (가장 첫 LooksLikePlayer actor 가 직전 self
                     //    proxy 로 막 채택된 케이스 제외) 추가 보류 — 다음 damage 가 들어와
                     //    self 가 결정되면 그때 추가.
+                    //
+                    //    **Multi-party 누수 차단 (사용자 보고 2026-05-28 무의 요람 1보스
+                    //    원정 던전 multi-party 인스턴스)**. 같은 풀에 옆 파티가 있어서 옆
+                    //    플레이어들이 같은 보스를 같이 때리는 케이스. sharesTargetWithSelf
+                    //    + LooksLikePlayer 만으로는 옆 파티 차단 못함 → leaderboard 에
+                    //    "정령성/마도성" 같은 직업명 fallback 행 5개가 surface 됨.
+                    //
+                    //    Strict 게이트. _currentMatchmakingRoom 이 set 되어 있으면
+                    //    (= PartyAssembly / COLDSTART_BOOT 으로 우리 파티 명단이 이미 박힘)
+                    //    LooksLikePlayer 추가 비활성. 우리 파티원은 이미 PartyRosterUpdate
+                    //    가 _partyMembers 에 박았으므로 영향 없음. 옆 파티 random 은 명단
+                    //    밖이라 surface 차단됨.
+                    //
+                    //    Cold-start (사용자 보고 2026-05-28 무의 요람 3보스 앞에서 미터 켜기).
+                    //    PartyAssembly 도착 전 (= _currentMatchmakingRoom=null) 인데 보스
+                    //    fight 가 이미 진행 중. 이전 정책은 LooksLikePlayer + sharesTargetWithSelf
+                    //    로 우리 파티원과 옆 파티 random 을 둘 다 surface — 결과적으로 옆
+                    //    파티 사람 4-5명이 "이상한 닉" 으로 leaderboard 에 올라와 사용자
+                    //    혼란. multi-party 던전에선 구분 신호 없음 (둘 다 같은 보스 때리고
+                    //    둘 다 player class skill 사용).
+                    //
+                    //    새 정책 (C). cold-start 동안 self 만 surface, 다른 actor 보류.
+                    //    PartyAssembly 도착 시 _partyMembers REPLACE 가 우리 파티 명단 4명을
+                    //    한 번에 박음. trade-off — cold-start 직후 leaderboard 가 본인만
+                    //    보임. UI 가 "파티 정보 불러오는 중" 표시로 사용자 인지 보조 (=
+                    //    IsResolvingParty 신호).
                     int? selfForGate = _registry.SelfUserId ?? _proxySelfActorId;
                     bool isSelfActor = selfForGate.HasValue && selfForGate.Value == actor;
-                    bool sharesTargetWithSelf = false;
-                    if (selfForGate.HasValue && !isSelfActor)
-                    {
-                        var selfStats = Current.GetExisting(selfForGate.Value);
-                        sharesTargetWithSelf = selfStats != null
-                            && selfStats.GetDamageToTarget(dmg.TargetId) > 0;
-                    }
+
+                    // 정책 D (2026-06-12): 정책 C 의 cold-start 확장. 던전 중간에 미터를
+                    // 켜면 서버가 PartyAssembly(0197) 를 재전송하지 않아 COLDSTART_BOOT 이
+                    // 영영 안 옴 (2026-06-05 세션 분석 — 파티원 3명이 inParty=F inRegistry=T
+                    // 로 전 구간 방치, 본인만 보임). 레지스트리에 닉네임이 박힌 actor 는
+                    // 파티 채널 (0092 CP refresh / 0B97 등) 로 서버가 인증한 멤버이므로
+                    // COLDSTART_BOOT 없이도 admit. 2026-05-28 멀티파티 누수의 옆파티 행들은
+                    // 닉 없는 직업명 fallback (= 레지스트리 밖) 이었으므로 이 게이트를 못
+                    // 넘음. 만약 옆파티가 OTHER_NICK 으로 레지스트리에 들어오는 반례가
+                    // 생기면 아래 COLDSTART_REGISTRY_ADMIT 로그로 즉시 식별 → 그때
+                    // CombatPower>0 같은 파티 채널 전용 신호로 조인다.
+                    bool inRegistryAdmit = !isSelfActor && _registry.GetEntry(actor) != null;
 
                     if (actorIsPlayerLike
+                        && !_currentMatchmakingRoom.HasValue
                         && !_partyMembers.Contains(actor)
-                        && (isSelfActor || sharesTargetWithSelf))
+                        && (isSelfActor || inRegistryAdmit))
                     {
                         _partyMembers.Add(actor);
                         _roomTracker.AddLiveMember(actor);
+
+                        if (inRegistryAdmit && RosterDebugLogPath != null)
+                        {
+                            try
+                            {
+                                System.IO.File.AppendAllText(RosterDebugLogPath,
+                                    $"{DateTime.Now:HH:mm:ss.fff} COLDSTART_REGISTRY_ADMIT actor={actor} nick={_registry.GetName(actor)}\n");
+                            }
+                            catch { }
+                        }
                     }
+
+                    // 잡 매칭 페어링 — 던전 신원 패킷 두절 시 복구 (내부 2초 스로틀).
+                    TryJobMatchAdoption();
                 }
                 break;
 
@@ -1051,6 +1272,24 @@ public sealed class DpsAggregator
 
                         if (!coldTrust)
                         {
+                            NicknameEventCount += roster.Members.Count;
+                            break;
+                        }
+
+                        // Post-kill preservation (cold-start 경로): 마지막 보스 처치
+                        // 직후 결과창 PARTY_ASSEMBLY 가 도착하면 cold-start orphans
+                        // (dungeon-id 로 누적된 데미지) 가 wipe + REPLACE 로 통째로
+                        // 날아가던 버그 (사용자 보고 2026-05-23: "마지막 보스 잡고
+                        // 닉/CP/서버 뜨는데 딜기록은 초기화됨").
+                        //
+                        // RegisterCanonical 은 위에서 이미 실행돼서 닉네임/CP/서버
+                        // 등록은 끝남 + nickname 매칭으로 orphan 자동 merge 되는
+                        // 케이스도 처리됨. 여기서는 추가 state 변경 (membership 교체)
+                        // 만 보류하면 됨. 다음 NEW_BOSS_FIRED 의 ResetCore 가 자동
+                        // 정리해줌.
+                        if (LastKilledBossId.HasValue)
+                        {
+                            if (coldNewRoom) _currentMatchmakingRoom = rosterRoom;
                             NicknameEventCount += roster.Members.Count;
                             break;
                         }
@@ -1206,34 +1445,28 @@ public sealed class DpsAggregator
                         && roster.Members.All(m => m.Server > 0 && m.CombatPower > 0);
                     var newSet = new HashSet<int>(memberCanonicalIds);
 
-                    // Final-boss-kill preservation: when LastKilledBossId is
-                    // set (we just killed a boss and haven't engaged the next
-                    // one yet), skip the toRemove pass entirely. The user
-                    // wants every member who was in the run to stay on screen
-                    // for post-fight comparison — even if a follow-up Strong
-                    // arrives with a shorter member list because someone left
-                    // the matchmaking room (사용자 보고 2026-05-14: "마지막
-                    // 3보스 다잡고 나서 사람들이 방나가도 계속 다른사람들
-                    // 딜미터기 기록 볼수있게 유지"). ResetCore on the next
-                    // NEW_BOSS_FIRED clears LastKilledBossId → toRemove
-                    // resumes for the new fight. New members from the
-                    // incoming roster still get added below.
+                    // toRemove pass — newSet 에 없는 멤버 정리. 이전엔 LastKilledBossId
+                    // 가드로 통째로 skip 했는데, 그게 "보스 잡은 직후 멤버 교체" 케이스도
+                    // 차단해서 stale 멤버가 다음 NEW_BOSS_FIRED 까지 leaderboard 에 남는
+                    // 버그 (사용자 보고 2026-05-28 무의 요람 태평성대 빠지고 치유성 들어옴
+                    // → 태평성대 안 없어짐). 원래 가드 의도 (= 2026-05-14 "마지막 보스 잡고
+                    // 사람들 방나가도 leaderboard 유지") 는 PARTY_LEFT / ROOM_CHANGE 신호
+                    // 의 경우인데, 그 두 케이스는 별도 가드 (PartyLeft 의 LastKilledBossId
+                    // 체크, ROOM_CHANGE 의 sameParty) 가 이미 처리. sameRoom UPDATE 에
+                    // 가드 적용은 redundant + 부작용. 제거.
                     var toRemove = new List<int>();
-                    if (!LastKilledBossId.HasValue)
+                    foreach (var id in _partyMembers)
                     {
-                        foreach (var id in _partyMembers)
+                        if (newSet.Contains(id)) continue;
+                        if (id == selfId) continue;  // self always preserved
+                        if (!incomingComplete)
                         {
-                            if (newSet.Contains(id)) continue;
-                            if (id == selfId) continue;  // self always preserved
-                            if (!incomingComplete)
-                            {
-                                // Partial broadcast: keep damage-bearing rows so
-                                // kill stats don't get wiped by a 4-of-6 update.
-                                var prev = Current.GetExisting(id);
-                                if (prev != null && prev.TotalDamage > 0) continue;
-                            }
-                            toRemove.Add(id);
+                            // Partial broadcast: keep damage-bearing rows so
+                            // kill stats don't get wiped by a 4-of-6 update.
+                            var prev = Current.GetExisting(id);
+                            if (prev != null && prev.TotalDamage > 0) continue;
                         }
+                        toRemove.Add(id);
                     }
                     foreach (var id in toRemove)
                     {
@@ -1407,6 +1640,7 @@ public sealed class DpsAggregator
                         && sp.OwnerId != owner.Value)
                     {
                         _registry.AddAlias(sp.OwnerId, owner.Value);
+                        _aliasLog.Record(sp.OwnerId, owner.Value, AliasSource.SummonSpawn, sp.TimestampTicks);
                     }
                     if (sp.MobCode.HasValue)
                         _entities.Register(sp.SummonId, sp.MobCode.Value);
@@ -1427,6 +1661,156 @@ public sealed class DpsAggregator
         // 새로 식별됐을 수 있으므로 proxy 가 있으면 merge 시도. 멱등이라 매 이벤트마다
         // 불러도 비용 ~0 (proxy 없으면 즉시 return).
         TryMergeProxyToSelf();
+
+        // Phase 1 shadow — raw event 를 append-only store 에 기록. 기존 mutable 처리와
+        // 병행, UI / view 빌드는 아직 안 함. 메모리 / 성능 측정 + Phase 2 ViewBuilder 의
+        // 입력 데이터셋 확보 목적.
+        ShadowRecord(evt);
+        }
+    }
+
+    /// <summary>보스 처치 직후 identity resolution 진단 snapshot.
+    ///
+    /// 출력 3 section.
+    ///   1. _partyMembers: lobby canonical 4명 의 nickname/server/job/cp + 각자 등록된 alias raw_ids
+    ///      + fight 동안 누적 데미지/hits. alias 가 비어 있으면 → 그 멤버의 dungeon-id 가 lobby
+    ///      canonical 로 안 잡힘 (root cause).
+    ///   2. Unresolved actors: _partyMembers 에 없으면서 player-like (LooksLikePlayer 또는
+    ///      hits>=20) 인 actor 들. 이게 우리 파티원의 dungeon-id 일 가능성 — top skill_code
+    ///      로 직업 추정해서 _partyMembers 의 누가 매핑되어야 하는지 추측.
+    ///   3. Total dmg comparison: 보스 (target=bossId) 에 가해진 데미지 중 _partyMembers
+    ///      4명이 차지하는 비율 vs unresolved 가 차지하는 비율. 누락이 어느 쪽인지 정량화.
+    /// </summary>
+    private void DumpIdentitySnapshot(int killedBossId)
+    {
+        if (string.IsNullOrEmpty(IdentityDebugLogPath)) return;
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== {DateTime.Now:HH:mm:ss.fff} BOSS_KILLED mobId={killedBossId} fight_events={_rawEventStore.TotalCount} aliases={_aliasLog.TotalCount} ===");
+
+            // Section 1. _partyMembers
+            sb.AppendLine($"-- _partyMembers ({_partyMembers.Count}) --");
+            long partyTotalToBoss = 0;
+            foreach (var canonicalId in _partyMembers)
+            {
+                var entry = _registry.GetEntry(canonicalId);
+                var nick = entry?.Nickname ?? "?";
+                var srv = entry?.Server ?? 0;
+                var job = entry?.Job ?? 0;
+                var cp = entry?.CombatPower ?? 0;
+                var stats = Current.GetExisting(canonicalId);
+                long dmgTot = stats?.TotalDamage ?? 0;
+                int hits = stats?.HitCount ?? 0;
+                long dmgToBoss = stats?.GetDamageToTarget(killedBossId) ?? 0;
+                partyTotalToBoss += dmgToBoss;
+
+                // 이 canonical 로 매핑된 모든 raw_id (역방향 lookup).
+                var aliasRaws = new List<int>();
+                foreach (var ae in _aliasLog.All)
+                    if (ae.CanonicalId == canonicalId && ae.RawId != canonicalId)
+                        aliasRaws.Add(ae.RawId);
+                string aliases = aliasRaws.Count == 0 ? "(none)" : string.Join(",", aliasRaws);
+
+                sb.AppendLine($"  canon={canonicalId,7} nick={nick,-16} srv={srv,3} job={job,3} cp={cp,7} dmgTot={dmgTot,10} hits={hits,4} dmgToBoss={dmgToBoss,10} aliases=[{aliases}]");
+            }
+
+            // Section 2. Unresolved player-like actors
+            sb.AppendLine($"-- Unresolved player-like actors (in fight, not in _partyMembers) --");
+            var seen = new HashSet<int>();
+            long unresolvedTotalToBoss = 0;
+            foreach (var ev in _rawEventStore.All)
+            {
+                if (ev is not RawDamage d) continue;
+                int canon = _aliasLog.Resolve(d.RawActorId);
+                if (_partyMembers.Contains(canon)) continue;
+                if (!seen.Add(canon)) continue;
+
+                var stats = Current.GetExisting(canon);
+                if (stats == null) continue;
+                if (!stats.LooksLikePlayer && stats.HitCount < 20) continue;
+
+                long dmgToBoss = stats.GetDamageToTarget(killedBossId);
+                unresolvedTotalToBoss += dmgToBoss;
+
+                var topSkills = stats.Skills.Values
+                    .OrderByDescending(s => s.HitCount)
+                    .Take(3)
+                    .Select(s => $"0x{s.SkillCode:X6}({s.HitCount})");
+                string sk = string.Join(",", topSkills);
+
+                var inferredClass = JobClass.Unknown;
+                foreach (var s in stats.Skills.Values)
+                {
+                    var jc = Aion2FunDps.Core.Sessions.JobClassDetector.FromSkillCode(s.SkillCode);
+                    if (jc != JobClass.Unknown) { inferredClass = jc; break; }
+                }
+
+                var reg = _registry.GetEntry(canon);
+                string nick = reg?.Nickname ?? "?";
+
+                sb.AppendLine($"  raw={d.RawActorId,7} canon={canon,7} nick={nick,-16} dmgTot={stats.TotalDamage,10} hits={stats.HitCount,4} dmgToBoss={dmgToBoss,10} llp={(stats.LooksLikePlayer ? "T" : "F")} inferredClass={inferredClass} topSkills=[{sk}]");
+            }
+
+            // Section 3. coverage 정량화
+            long bossTotal = partyTotalToBoss + unresolvedTotalToBoss;
+            double partyPct = bossTotal > 0 ? 100.0 * partyTotalToBoss / bossTotal : 0;
+            double unresolvedPct = bossTotal > 0 ? 100.0 * unresolvedTotalToBoss / bossTotal : 0;
+            sb.AppendLine($"-- Coverage --");
+            sb.AppendLine($"  bossTotal(captured)={bossTotal}  party={partyTotalToBoss} ({partyPct:F1}%)  unresolved={unresolvedTotalToBoss} ({unresolvedPct:F1}%)");
+            sb.AppendLine();
+
+            System.IO.File.AppendAllText(IdentityDebugLogPath, sb.ToString());
+        }
+        catch { }
+    }
+
+    /// <summary>NicknameInfo 컨텍스트로 AliasSource 추정. Phase 1 단순 분류, Phase 3 에서
+    /// 정밀화 가능 (handler 가 source 를 명시적으로 패킷에 박는 식).</summary>
+    private static AliasSource InferNicknameSource(NicknameInfo nick)
+    {
+        if (nick.IsSelf) return AliasSource.SelfNick;
+        if (nick.IsRosterStart) return AliasSource.PartyAssembly;
+        if (nick.IsPartyMember) return AliasSource.BulkInfo;
+        return AliasSource.OtherNick;
+    }
+
+    /// <summary>IGameEvent → IRawEvent shadow recording. Phase 1 의 핵심 — 매 OnEvent
+    /// 마지막에 호출. raw_actor_id 그대로, alias 해소 X (그건 ViewBuilder 의 일).</summary>
+    private void ShadowRecord(IGameEvent evt)
+    {
+        switch (evt)
+        {
+            case DamageEvent dmg:
+                if (dmg.IsDot)
+                    _rawEventStore.Record(new RawDotTick(dmg.TimestampTicks, dmg.ActorId, dmg.TargetId, dmg.SkillCode, dmg.Damage));
+                else
+                    _rawEventStore.Record(new RawDamage(dmg.TimestampTicks, dmg.ActorId, dmg.TargetId, dmg.SkillCode, dmg.Damage, dmg.IsCritical, dmg.IsBackAttack));
+                break;
+            case NicknameInfo nick:
+                _rawEventStore.Record(new RawNickname(nick.TimestampTicks, nick.UserId, nick.Nickname, nick.IsSelf, nick.Server, nick.Job, nick.CombatPower));
+                break;
+            case PartyRosterUpdate roster:
+                // 각 멤버 닉네임을 RawNickname 으로. AliasSource 는 PartyRosterUpdate 자체
+                // 의 confidence 로 추정 (Strong → PartyAssembly, Weak → BulkInfo).
+                foreach (var m in roster.Members)
+                    _rawEventStore.Record(new RawNickname(roster.TimestampTicks, m.UserId, m.Nickname, m.IsSelf, m.Server, m.Job, m.CombatPower));
+                break;
+            case MobHpUpdate hp:
+                // MobHpUpdate 패킷에는 MaxHp 가 없음 — BossTracker 가 max 를 보관.
+                // Phase 1 shadow 에서는 MaxHp=0 으로 기록 (ViewBuilder Phase 2 가
+                // BossTracker snapshot 으로 보강).
+                _rawEventStore.Record(new RawHpUpdate(hp.TimestampTicks, hp.MobId, hp.CurrentHp, 0));
+                break;
+            case SummonSpawnInfo sp:
+                _rawEventStore.Record(new RawSummonSpawn(sp.TimestampTicks, sp.SummonId, sp.OwnerId, sp.OwnerName, sp.MobCode));
+                break;
+            case CombatPowerUpdate cpu:
+                _rawEventStore.Record(new RawCombatPowerUpdate(cpu.TimestampTicks, 0, cpu.Nickname, cpu.ServerId, cpu.CombatPower));
+                break;
+            // CombatBoundary / EncounterAnnouncement / DungeonAnnouncement / PartyLeft —
+            // 현재 view 에 직접 영향 없는 메타 이벤트. Phase 1 에선 미기록. 나중에
+            // 필요하면 IRawEvent 구현체 추가.
         }
     }
 
@@ -1739,6 +2123,11 @@ public sealed class DpsAggregator
         _boss.Reset();
         LastKilledBossId = null;
         FrozenTotalPartyDamage = null;
+
+        // Phase 1 shadow — raw event store 도 비움 (다음 풀의 view 가 깨끗하게 출발).
+        // AliasLog 는 보존 — NicknameRegistry 가 보존되는 것과 동일 정책 (alias 지식은
+        // 세션 reset 과 무관하게 누적).
+        _rawEventStore.Reset();
         // Re-seed PlayerStats for canonical members so they keep their rows
         // through the reset (their NicknameRegistry entries / aliases persist;
         // PlayerStats were wiped by Current = new Session()).

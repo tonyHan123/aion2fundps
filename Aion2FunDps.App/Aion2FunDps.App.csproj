@@ -36,6 +36,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Rajdhani (OFL) — 숫자 전용 HUD 폰트. Resource 로 어셈블리에 임베드되므로
+         single-file publish 에서도 pack URI 로 로드됨 (Content 와 달리 추출 불필요). -->
+    <Resource Include="Assets\Fonts\*.ttf" />
     <Content Include="Assets\ClassIcons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

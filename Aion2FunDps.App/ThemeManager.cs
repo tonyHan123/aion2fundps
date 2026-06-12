@@ -33,6 +33,11 @@ public static class ThemeManager
     private static string _currentThemeId = "Default";
     public static string CurrentThemeId => _currentThemeId;
 
+    /// <summary>Theme 변경 직후 fire. listener (MainWindow 등) 가 brush snapshot 갱신.
+    /// DynamicResource binding 이 깨진 element (예: code-behind 에서 직접 set 한 Background)
+    /// 가 새 theme 색 반영 위함.</summary>
+    public static event System.Action? ThemeChanged;
+
     /// <summary>
     /// Loads the named theme dictionary from /Themes/Theme.{themeId}.xaml
     /// and swaps it into Application.Resources at slot 0. Falls back to
@@ -75,5 +80,6 @@ public static class ThemeManager
             app.Resources.MergedDictionaries[0] = newDict;
         }
         _currentThemeId = themeId;
+        ThemeChanged?.Invoke();
     }
 }

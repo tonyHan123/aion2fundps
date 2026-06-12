@@ -364,6 +364,15 @@ public sealed class BossTracker
             if (id == excludeId) continue;
             if (s.CurrentHp == 0) continue;
             if (!IsBossGrade(id, s)) continue;
+            // BossDetected 게이트 (v0.1.7): HP_UPDATE 로 _entities 에 등록만 되고
+            // 아직 데미지 안 들어간 보스룸 backdrop entity (예: 노트하라 방의
+            // 25432/45364/22144/24606) 를 alive 로 false-positive 카운트하지
+            // 않도록. TryFireBossDetected 가 IncomingDamageEvents>0 + IsKnownBoss
+            // 조건 둘 다 통과해야 BossDetected=true 로 세팅 — "실제 engaged 된
+            // 보스" 의미. 사용자 보고 2026-05-23: 보스 처치 후 다음 보스 풀에서
+            // RESET_SKIPPED OtherAliveBoss 발동 → frozen 분모 + 누적 데미지가
+            // 새 fight 에 섞여서 지분율 폭주.
+            if (!s.BossDetected) continue;
             // Stale-skip: no HP/damage update in StaleEntityTimeout → treat as gone.
             if (now - s.LastUpdateUtc > StaleEntityTimeout) continue;
             return true;

@@ -101,6 +101,35 @@
     <SolidColorBrush x:Key="RankBar8Brush"      Color="#99ADB5BD"/>  <!-- gray -->
     <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#FFADB5BD"/>
 
+    <!-- ════════════════════════════════════════════════════════════════
+         Ambient Glass (2026-06-12 리디자인) — docs/ambient-glass-context.md
+         색=클래스 고정(사람을 따라다님), 순위=위치+포디움 숫자색.
+         숫자 폰트 = Rajdhani (임베디드 리소스, 한글 만/억/% 는 폴백). -->
+    <FontFamily x:Key="NumFont">/Aion2FunDps.App;component/Assets/Fonts/#Rajdhani, Cascadia Mono, Consolas</FontFamily>
+
+    <!-- 글래스 행 표면 -->
+    <SolidColorBrush x:Key="GlassRowBgBrush"      Color="#660D131B"/>
+    <SolidColorBrush x:Key="GlassSelfRowBgBrush"  Color="#8C18222B"/>
+    <SolidColorBrush x:Key="GlassSelfStrokeBrush" Color="#59FFFFFF"/>
+    <SolidColorBrush x:Key="BarGlossBrush"        Color="#59FFFFFF"/>
+
+    <!-- 숫자 타이포 위계: DPS(주) > 지분 > 총딜(보조) > 단위 -->
+    <SolidColorBrush x:Key="NumPrimaryBrush"      Color="#F7FAFD"/>
+    <SolidColorBrush x:Key="NumSecondaryBrush"    Color="#C2CBD6"/>
+    <SolidColorBrush x:Key="NumUnitBrush"         Color="#9AA5B2"/>
+    <SolidColorBrush x:Key="RankMutedBrush"       Color="#BCC5D1"/>
+
+    <!-- 지분 히트 칩 (B-3): T2=금(캐리) T1=은 T0=중립. 기준은 파티 평균 대비 상대값. -->
+    <SolidColorBrush x:Key="ChipT2BgBrush"     Color="#33FFD66B"/>
+    <SolidColorBrush x:Key="ChipT2BorderBrush" Color="#8CFFD66B"/>
+    <SolidColorBrush x:Key="ChipT2TextBrush"   Color="#FFE3A1"/>
+    <SolidColorBrush x:Key="ChipT1BgBrush"     Color="#26D6DCE5"/>
+    <SolidColorBrush x:Key="ChipT1BorderBrush" Color="#66D6DCE5"/>
+    <SolidColorBrush x:Key="ChipT1TextBrush"   Color="#E4E9F0"/>
+    <SolidColorBrush x:Key="ChipT0BgBrush"     Color="#4D000A14"/>
+    <SolidColorBrush x:Key="ChipT0BorderBrush" Color="#33FFFFFF"/>
+    <SolidColorBrush x:Key="ChipT0TextBrush"   Color="#B9C2CE"/>
+
     <!-- Logo (AION2FUN wordmark) — cool blue family. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Offset="0"   Color="#F2FAFF"/>

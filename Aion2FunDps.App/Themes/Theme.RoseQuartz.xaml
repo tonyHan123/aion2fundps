@@ -120,6 +120,31 @@
     <SolidColorBrush x:Key="RankBar8Brush"      Color="#991F2937"/>  <!-- gray 800 -->
     <SolidColorBrush x:Key="RankBar8EdgeBrush"  Color="#FF1F2937"/>
 
+    <!-- ════════════════════════════════════════════════════════════════
+         Ambient Glass (2026-06-12 리디자인) — 핑크 BG 용 라이트 글래스 변형.
+         행 = 화이트 글래스, 텍스트 = 딥 와인 (테마 TextBrush 계열). -->
+    <FontFamily x:Key="NumFont">/Aion2FunDps.App;component/Assets/Fonts/#Rajdhani, Cascadia Mono, Consolas</FontFamily>
+
+    <SolidColorBrush x:Key="GlassRowBgBrush"      Color="#40FFFFFF"/>
+    <SolidColorBrush x:Key="GlassSelfRowBgBrush"  Color="#66FFFFFF"/>
+    <SolidColorBrush x:Key="GlassSelfStrokeBrush" Color="#803B1A28"/>
+    <SolidColorBrush x:Key="BarGlossBrush"        Color="#66FFFFFF"/>
+
+    <SolidColorBrush x:Key="NumPrimaryBrush"      Color="#2B1320"/>
+    <SolidColorBrush x:Key="NumSecondaryBrush"    Color="#5E3346"/>
+    <SolidColorBrush x:Key="NumUnitBrush"         Color="#8A5A6E"/>
+    <SolidColorBrush x:Key="RankMutedBrush"       Color="#7A4658"/>
+
+    <SolidColorBrush x:Key="ChipT2BgBrush"     Color="#33B8853F"/>
+    <SolidColorBrush x:Key="ChipT2BorderBrush" Color="#99B8853F"/>
+    <SolidColorBrush x:Key="ChipT2TextBrush"   Color="#6E4F1C"/>
+    <SolidColorBrush x:Key="ChipT1BgBrush"     Color="#268E96A3"/>
+    <SolidColorBrush x:Key="ChipT1BorderBrush" Color="#668E96A3"/>
+    <SolidColorBrush x:Key="ChipT1TextBrush"   Color="#5A6470"/>
+    <SolidColorBrush x:Key="ChipT0BgBrush"     Color="#1A3B1A28"/>
+    <SolidColorBrush x:Key="ChipT0BorderBrush" Color="#333B1A28"/>
+    <SolidColorBrush x:Key="ChipT0TextBrush"   Color="#6E4658"/>
+
     <!-- Logo (AION2FUN wordmark) — pink-to-magenta gradient. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">
         <GradientStop Offset="0"    Color="#FFE8F0"/>

@@ -236,6 +236,10 @@ public partial class App : Application
                 managedDispatcher.BulkInfoLogPath = LogPaths.Combine("bulk-debug.log");
                 managedDispatcher.PartyFamilyLogPath = LogPaths.Combine("party-family-debug.log");
                 managedDispatcher.NicknameSweepLogPath = LogPaths.Combine("nickname-sweep-debug.log");
+                // 2026-06-12 게임 업데이트 먹통 진단 — 전 프레임 ground-truth 덤프.
+                // 알려진 opcode 의 레이아웃 변경(조용한 오파싱)까지 사후 추적 가능.
+                // 전투 중 ~2MB/min — 진단 끝나면 이 줄 주석 처리.
+                managedDispatcher.AllFramesLogPath = LogPaths.Combine("frames-dump.log");
 #endif
             }
             var aggregator = new DpsAggregator
@@ -246,6 +250,8 @@ public partial class App : Application
             aggregator.Boss.DiagnosticLogPath = LogPaths.Combine("reset-debug.log");
             aggregator.RosterDebugLogPath = LogPaths.Combine("roster-debug.log");
             aggregator.ProxyDebugLogPath = LogPaths.Combine("proxy-debug.log");
+            aggregator.ViewVerificationLogPath = LogPaths.Combine("view-verify.log");
+            aggregator.IdentityDebugLogPath = LogPaths.Combine("identity-debug.log");
 #endif
 
             // Wire mob_code → boss-status predicate. Three-state result:
@@ -352,8 +358,10 @@ public partial class App : Application
             // 깨짐" 으로 오인하는 케이스 (사용자 보고 2026-05-19) 의 근본 픽스.
             // 매 실행을 펼친 상태로 시작 → 빈 창 오인 불가.
             vm.WindowOpacity = Settings.WindowOpacity;
-            vm.AutoResetOnBoss = Settings.AutoResetOnBoss;
             vm.ShareCalculationMode = Settings.ShareCalculationMode;
+#if DEBUG
+            vm.ShareDebugLogPath = LogPaths.Combine("share-debug.log");
+#endif
 
             Log("Showing window");
             window.Show();
@@ -388,6 +396,51 @@ public partial class App : Application
                 else        window.Hide();
             };
             _foregroundWatcher.Start();
+
+            // Self nickname extraction from game window title. NCSoft 가 Aion2 윈도우 title 에
+            // "AION2 l [캐릭터명]" 형식으로 self 캐릭터 노출. cold-start 의 진짜 해결책 —
+            // 미터 시작 직후 self 확정, 패킷 분석 의존 0. 다른 미터들 (TK / A2Viewer 등) 이
+            // 못 잡는 차별점. 10초 주기 polling (캐릭터 변경 자동 감지).
+            _ = Task.Run(async () =>
+            {
+                string? lastTitle = null;
+                while (true)
+                {
+                    try
+                    {
+                        var aion = System.Diagnostics.Process.GetProcessesByName("Aion2").FirstOrDefault();
+                        var title = aion?.MainWindowTitle;
+                        if (!string.IsNullOrEmpty(title) && title != lastTitle)
+                        {
+                            lastTitle = title;
+                            // "AION2 l 짭호" — 두 번째 위치에 lowercase 'l' 또는 pipe '|'.
+                            // 둘 다 try.
+                            int sepIdx = -1;
+                            for (int i = 0; i < title.Length; i++)
+                            {
+                                if (title[i] == '|' || title[i] == 'l')
+                                {
+                                    // 'l' 은 단어 안에 있을 수 있으므로 앞뒤 공백 확인.
+                                    bool isSep = (i > 0 && title[i - 1] == ' ')
+                                              && (i < title.Length - 1 && title[i + 1] == ' ');
+                                    if (isSep) { sepIdx = i; break; }
+                                }
+                            }
+                            if (sepIdx > 0 && sepIdx < title.Length - 1)
+                            {
+                                var nick = title.Substring(sepIdx + 1).Trim();
+                                if (!string.IsNullOrEmpty(nick))
+                                {
+                                    aggregator.Registry.SetSelfNicknameFromExternalSource(nick);
+                                    Log($"Self nickname from window title: '{nick}' (full title: '{title}')");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex) { Log($"Window title polling error: {ex.Message}"); }
+                    await Task.Delay(10_000);
+                }
+            });
 
             // Update check — fire-and-forget. The HttpClient inside UpdateChecker
             // is timeout-bounded (8s) and swallows every failure, so the worst
@@ -443,7 +496,6 @@ public partial class App : Application
             if (_mainWindow?.DataContext is MainViewModel vm)
             {
                 Settings.WindowOpacity         = vm.WindowOpacity;
-                Settings.AutoResetOnBoss       = vm.AutoResetOnBoss;
                 Settings.ShareCalculationMode  = vm.ShareCalculationMode;
             }
             Settings.SelectedTheme = ThemeManager.CurrentThemeId;

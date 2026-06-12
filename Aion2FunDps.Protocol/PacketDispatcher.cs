@@ -118,6 +118,17 @@ public sealed class PacketDispatcher : IDispatcherTelemetry
     /// </summary>
     public string? NicknameSweepLogPath { get; set; }
 
+    /// <summary>
+    /// 게임 업데이트 프로토콜 변경 추적용 — 모든 게임 프레임을 opcode 무관하게
+    /// 덤프 (timestamp + src + opcode + len + 첫 N바이트 hex). Unknown sniffer 는
+    /// "모르는 opcode" 만 잡으므로, 업데이트로 **알려진 opcode 의 내부 레이아웃만
+    /// 바뀐** 경우 (핸들러가 조용히 오파싱) 증거가 안 남는 구멍을 메운다.
+    /// 2026-06-12: 아이온2 업데이트 후 대기방 명단/보스 DPS 먹통 보고 (타 미터
+    /// 포함) 의 원인 분석 세션용. 전투 중 ~2MB/min 수준 — 진단 세션 전용으로만 켤 것.
+    /// </summary>
+    public string? AllFramesLogPath { get; set; }
+    public int AllFramesByteCap { get; set; } = 256;
+
     private static string ToHex(ReadOnlySpan<byte> bytes) =>
         string.Join(" ", bytes.ToArray().Select(b => b.ToString("x2")));
 
@@ -414,6 +425,25 @@ public sealed class PacketDispatcher : IDispatcherTelemetry
 
         byte op0 = body[0];
         byte op1 = body[1];
+
+        // 전 프레임 덤프 — 어떤 핸들러가 받는지(또는 아무도 안 받는지)와 무관하게
+        // 헤더+선두 바이트를 기록. 업데이트로 레이아웃이 바뀐 opcode 를 사후
+        // 식별하는 ground truth. (xmldoc: AllFramesLogPath)
+        if (AllFramesLogPath != null)
+        {
+            try
+            {
+                var hexAll = string.Join(" ",
+                    body[..Math.Min(AllFramesByteCap, body.Length)].ToArray().Select(b => b.ToString("x2")));
+                string srcIpAll = $"{(sourceIpv4 >> 24) & 0xFF}.{(sourceIpv4 >> 16) & 0xFF}.{(sourceIpv4 >> 8) & 0xFF}.{sourceIpv4 & 0xFF}";
+                lock (_logLock)
+                {
+                    System.IO.File.AppendAllText(AllFramesLogPath,
+                        $"{DateTime.Now:HH:mm:ss.fff} src={srcIpAll} op={op0:x2}{op1:x2} len={body.Length}: {hexAll}\n");
+                }
+            }
+            catch { }
+        }
 
         // Wire-level RE: dump every frame whose payload smells like it carries
         // a nickname, regardless of which opcode handler ends up taking it

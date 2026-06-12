@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace Aion2FunDps.App;
 
@@ -38,9 +39,42 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // 투명도 모드 결정 — AllowsTransparency 는 윈도우 HWND 생성 (SourceInitialized) 전,
+        // 즉 생성자 시점에만 설정 가능. 런타임 변경 불가 (변경 시 재시작).
+        //   - 기본 (FrameGenCompatMode=false): AllowsTransparency=True → 게임이 비치는 진짜
+        //     투명. Window.Background=Transparent, OuterBorder 의 alpha brush 가 반투명도 조절.
+        //   - frame gen 모드 (true): AllowsTransparency=False → 불투명 (배경 안 비침). AFMF /
+        //     Lossless Scaling 같은 frame gen 툴과 호환.
+        bool frameGenCompat = (Application.Current as App)?.Settings.FrameGenCompatMode ?? false;
+        bool transparent = !frameGenCompat;
+        AllowsTransparency = transparent;
+        if (transparent)
+            Background = Brushes.Transparent;
+        // frame gen 모드면 UpdateBackgroundAlpha 가 opaque BgBrush 로 채움 (아래 Loaded).
+
 #if !DEBUG
         MarkBtn.Visibility = Visibility.Collapsed;
 #endif
+
+        // 투명도 슬라이더 → OuterBorder 배경 brush 의 alpha 만 변경. content (텍스트/행) 은
+        // 그대로 선명. AllowsTransparency=False (frame gen 호환 fix) 와 Window.Opacity (전체
+        // dim 부작용) 의 양립 — background 색상만 알파 조절하면 게임 위에 자연스럽게 overlay
+        // (사용자 보고 2026-06-05).
+        Loaded += (_, _) =>
+        {
+            if (DataContext is Aion2FunDps.UI.ViewModels.MainViewModel vm0)
+            {
+                vm0.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(Aion2FunDps.UI.ViewModels.MainViewModel.WindowOpacity))
+                        UpdateBackgroundAlpha();
+                };
+                UpdateBackgroundAlpha();
+            }
+            // Theme 변경 시 brush 다시 적용 — code-behind 가 OuterBorder.Background 을 직접
+            // set 하면서 DynamicResource binding 깨졌으므로 수동 갱신 필요.
+            ThemeManager.ThemeChanged += UpdateBackgroundAlpha;
+        };
 
         // Hide from Alt+Tab — two-layer defense because WS_EX_TOOLWINDOW
         // alone isn't reliable on every Windows 10/11 build, especially
@@ -140,6 +174,35 @@ public partial class MainWindow : Window
         {
             _lastNormalWidth = Width;
             _lastNormalHeight = Height;
+        }
+    }
+
+    /// <summary>
+    /// OuterBorder 배경 brush 의 alpha 만 vm.WindowOpacity 기반으로 갱신. content 영향 X.
+    /// theme 의 BgBrush RGB 그대로 유지, alpha 만 0x33 (~0.2) ~ 0xFF (1.0).
+    /// theme 변경 시에도 갱신 (PropertyChanged 가 ThemeManager 의 trigger 와 별개라 호출 필요).
+    /// </summary>
+    private void UpdateBackgroundAlpha()
+    {
+        if (DataContext is not Aion2FunDps.UI.ViewModels.MainViewModel vm) return;
+        var resource = TryFindResource("BgBrush") as SolidColorBrush;
+        if (resource == null) return;
+        var c = resource.Color;
+
+        if (AllowsTransparency)
+        {
+            // 진짜 투명 모드. OuterBorder 의 배경 brush 에만 alpha 적용 — 배경은 게임이
+            // 비치고 텍스트/행은 선명. Window.Background 는 Transparent 유지 (라운드 코너
+            // 바깥 영역도 게임 비침).
+            byte alpha = (byte)System.Math.Clamp(vm.WindowOpacity * 255, 0, 255);
+            OuterBorder.Background = new SolidColorBrush(Color.FromArgb(alpha, c.R, c.G, c.B));
+        }
+        else
+        {
+            // frame gen 호환 모드. AllowsTransparency=False 라 alpha 주면 검은색 합성됨.
+            // 투명 불가 — full opaque theme 색으로 채움 (슬라이더는 무시).
+            OuterBorder.Background = new SolidColorBrush(Color.FromArgb(0xFF, c.R, c.G, c.B));
+            this.Background = new SolidColorBrush(Color.FromArgb(0xFF, c.R, c.G, c.B));
         }
     }
 

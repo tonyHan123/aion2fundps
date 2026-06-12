@@ -18,12 +18,19 @@ public sealed class AppSettings
     public string SelectedTheme { get; set; } = "Default";
 
     public double WindowOpacity { get; set; } = 1.0;
+
+    /// <summary>
+    /// 프레임 생성 호환 모드. true 면 AllowsTransparency=False 로 윈도우 생성 — AFMF /
+    /// Lossless Scaling 같은 frame gen 툴과 호환 (대신 배경 투명 안 됨, 검은색). false (기본)
+    /// 면 AllowsTransparency=True — 게임이 비치는 진짜 투명 (대다수 사용자 기본값). 변경 시
+    /// 재시작 필요 (AllowsTransparency 는 윈도우 생성 시점에만 설정 가능).
+    /// </summary>
+    public bool FrameGenCompatMode { get; set; } = false;
+
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
     public double? WindowWidth { get; set; }
     public double? WindowHeight { get; set; }
-
-    public bool AutoResetOnBoss { get; set; } = true;
 
     /// <summary>
     /// 지분율 계산 기준.

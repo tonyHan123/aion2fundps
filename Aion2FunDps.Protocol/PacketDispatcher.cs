@@ -603,6 +603,26 @@ public sealed class PacketDispatcher : IDispatcherTelemetry
             return;
         }
 
+        // 0x41 0x36 = IN-DUNGEON ENTITY REMAP (2026-06-13 성역 분석). Carries
+        // nickname + dungeon entity_id; bridges damage actorIds that op=0297
+        // (lobby id space) can't reach. Recovers same-class members the job-match
+        // fallback skips (성역 치유성 2명 케이스). Info-enrichment only.
+        if (op0 == 0x41 && op1 == 0x36)
+        {
+            bool ok = CombatEntityRemapHandler.TryParse(body, ticks, sourceIpv4, out var remap);
+            LogPacket("ENTITY_REMAP", body, ok);
+            if (ok)
+            {
+                emit(remap);
+                Interlocked.Increment(ref _knownCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _malformedCount);
+            }
+            return;
+        }
+
         // 0x01 0x91 = ENCOUNTER_ANNOUNCE (boss intro banner — used to link entityId → mob_code)
         if (op0 == 0x01 && op1 == 0x91)
         {

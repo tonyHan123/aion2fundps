@@ -407,15 +407,26 @@
                                                SnapsToDevicePixels="True"
                                                RenderOptions.BitmapScalingMode="Fant"/>
 
-                                        <TextBlock Grid.Column="2"
-                                                   Text="{Binding DisplayName}"
-                                                   Foreground="{DynamicResource TextBrush}"
-                                                   FontFamily="{DynamicResource UiFont}"
-                                                   FontSize="12"
-                                                   FontWeight="SemiBold"
-                                                   Margin="6,0,0,0"
-                                                   VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"/>
+                                        <!-- 이름 + 전투력 (2026-06-13, 1-A) — 전투력은 툴팁만으론 전투 중 확인 불가
+                                             피드백으로 행에 재노출. 유동 컬럼 우측 끝 고정 = 행간 세로 정렬 유지,
+                                             이름이 길면 이름만 트리밍. -->
+                                        <DockPanel Grid.Column="2" Margin="6,0,0,0" LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right"
+                                                       Text="{Binding CombatPowerDisplay}"
+                                                       Foreground="{DynamicResource CombatPowerBrush}"
+                                                       FontFamily="{DynamicResource NumFont}"
+                                                       FontSize="9.5"
+                                                       Margin="6,1,8,0"
+                                                       VerticalAlignment="Center"
+                                                       ToolTip="전투력"/>
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       Foreground="{DynamicResource TextBrush}"
+                                                       FontFamily="{DynamicResource UiFont}"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
 
                                         <!-- 총딜 (보조 위계) — 값/단위 분리, 단위 디밍 -->
                                         <TextBlock Grid.Column="3"

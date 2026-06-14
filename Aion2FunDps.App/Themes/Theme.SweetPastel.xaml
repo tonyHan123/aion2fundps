@@ -59,7 +59,8 @@
     <!-- Typography — same family across themes. One typography choice owned
          at the design-system level keeps "this app's voice" consistent
          regardless of color theme. -->
-    <FontFamily x:Key="UiFont">Pretendard, Malgun Gothic, Segoe UI</FontFamily>
+    <!-- Pretendard 임베드 (2026-06-13) — 미설치 PC에서 Malgun 폴백 문제 해결. -->
+    <FontFamily x:Key="UiFont">/Aion2FunDps.App;component/Assets/Fonts/#Pretendard, Malgun Gothic, Segoe UI</FontFamily>
     <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
 
     <!-- Row + section surface overlays. Warm dark-alpha against the cream BG
@@ -135,6 +136,8 @@
     <SolidColorBrush x:Key="BarGlossBrush"        Color="#66FFFFFF"/>
 
     <SolidColorBrush x:Key="NumPrimaryBrush"      Color="#2E2127"/>
+    <!-- 위계는 크기/굵기로. 색은 진하게 유지 — 반투명 크림 BG가 밝은 게임화면 위에서
+         옅어져 색을 밝히면 묻힘 (사용자 보고 2026-06-13). -->
     <SolidColorBrush x:Key="NumSecondaryBrush"    Color="#5C4A52"/>
     <SolidColorBrush x:Key="NumUnitBrush"         Color="#8B7280"/>
     <SolidColorBrush x:Key="RankMutedBrush"       Color="#8B7280"/>
@@ -147,7 +150,16 @@
     <SolidColorBrush x:Key="ChipT1TextBrush"   Color="#5C656F"/>
     <SolidColorBrush x:Key="ChipT0BgBrush"     Color="#1A3D2D33"/>
     <SolidColorBrush x:Key="ChipT0BorderBrush" Color="#333D2D33"/>
-    <SolidColorBrush x:Key="ChipT0TextBrush"   Color="#6E5A63"/>
+    <SolidColorBrush x:Key="ChipT0TextBrush"   Color="#4E3F47"/>
+
+    <!-- 전투력 배지 (2026-06-13) — 크림 테마 = 어두운 프로스트 칩 + 딥틸 텍스트. -->
+    <SolidColorBrush x:Key="CpBadgeBgBrush"     Color="#1A000000"/>
+    <SolidColorBrush x:Key="CpBadgeBorderBrush" Color="#33000000"/>
+    <SolidColorBrush x:Key="CpBadgeTextBrush"   Color="#234E60"/>
+    <!-- 컬럼 헤더 — 반투명 BG 위에서도 또렷하게 진한 토프. -->
+    <SolidColorBrush x:Key="ColHeaderBrush"     Color="#5C4A52"/>
+    <!-- 행 텍스트 글로우 — 클래스색 바 위 어두운 글자가 뜨게. 라이트 테마 = 흰색 글로우. -->
+    <Color x:Key="RowTextGlowColor">#FFFFFF</Color>
 
     <!-- Logo (AION2FUN wordmark) — warm rose family for the cream theme. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

@@ -23,6 +23,7 @@
 #include "handlers/other_nickname.h"
 #include "handlers/summon_spawn.h"
 #include "handlers/combat_power.h"
+#include "handlers/combat_entity_spawn.h"
 #include "handlers/party_member_status.h"
 #include "handlers/party_assembly.h"
 
@@ -233,6 +234,18 @@ void PacketDispatcher::DispatchOpcode(
     }
 
     // 01 91 — encounter announce (boss intro)
+    // 22 92 - in-dungeon entity spawn. Bridges combat actor id to nickname/job.
+    if (op0 == 0x22 && op1 == 0x92) {
+        events::NicknameInfo evt{};
+        if (handlers::try_parse_combat_entity_spawn(
+                body, blen, timestamp_ticks, source_ipv4, evt)) {
+            if (cbs.on_nickname) cbs.on_nickname(cbs.ctx, &evt);
+        } else {
+            ++malformed_count_;
+        }
+        return;
+    }
+
     if (op0 == 0x01 && op1 == 0x91) {
         events::EncounterAnnouncement evt{};
         if (handlers::try_parse_encounter_announce(body, blen, timestamp_ticks, source_ipv4, evt)) {

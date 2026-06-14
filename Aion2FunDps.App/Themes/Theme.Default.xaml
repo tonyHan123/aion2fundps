@@ -36,7 +36,9 @@
     <SolidColorBrush x:Key="AmberSoftBrush"     Color="#1AF4A640"/>
 
     <!-- Typography -->
-    <FontFamily x:Key="UiFont">Pretendard, Malgun Gothic, Segoe UI</FontFamily>
+    <!-- Pretendard 임베드 (2026-06-13) — 미설치 PC에서 Malgun 으로 폴백돼 "쭈글"해 보이던
+         문제 해결. SemiBold 면(@600)은 RIBBI 에 없어 Bold(@700)로 매핑 — 작은 HUD 글자엔 더 또렷. -->
+    <FontFamily x:Key="UiFont">/Aion2FunDps.App;component/Assets/Fonts/#Pretendard, Malgun Gothic, Segoe UI</FontFamily>
     <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
 
     <!-- Row + section surface overlays. Subtle white-alpha against the dark BG. -->
@@ -115,6 +117,7 @@
 
     <!-- 숫자 타이포 위계: DPS(주) > 지분 > 총딜(보조) > 단위 -->
     <SolidColorBrush x:Key="NumPrimaryBrush"      Color="#F7FAFD"/>
+    <!-- 위계는 크기/굵기로 (DPS 15 Bold vs 총딜 11). 색 대비는 유지. -->
     <SolidColorBrush x:Key="NumSecondaryBrush"    Color="#C2CBD6"/>
     <SolidColorBrush x:Key="NumUnitBrush"         Color="#9AA5B2"/>
     <SolidColorBrush x:Key="RankMutedBrush"       Color="#BCC5D1"/>
@@ -129,6 +132,16 @@
     <SolidColorBrush x:Key="ChipT0BgBrush"     Color="#4D000A14"/>
     <SolidColorBrush x:Key="ChipT0BorderBrush" Color="#33FFFFFF"/>
     <SolidColorBrush x:Key="ChipT0TextBrush"   Color="#B9C2CE"/>
+
+    <!-- 전투력 배지 (2026-06-13) — 값만 표시, '전투력' 라벨은 컬럼 헤더에 1회.
+         다크 테마 = 밝은 프로스트 칩(어두운 BG 위에 떠야 함) + 골드 텍스트. -->
+    <SolidColorBrush x:Key="CpBadgeBgBrush"     Color="#1AFFFFFF"/>
+    <SolidColorBrush x:Key="CpBadgeBorderBrush" Color="#2EFFFFFF"/>
+    <SolidColorBrush x:Key="CpBadgeTextBrush"   Color="#F2DCA4"/>
+    <!-- 컬럼 헤더 라벨(전투력/총딜/DPS/지분) 색 — 투명창 grayscale AA 에서도 읽히게 밝게. -->
+    <SolidColorBrush x:Key="ColHeaderBrush"     Color="#AAB6C6"/>
+    <!-- 행 텍스트 글로우 — 클래스색 바 위에서 숫자가 묻히지 않게. 다크 테마 = 검정 글로우. -->
+    <Color x:Key="RowTextGlowColor">#000000</Color>
 
     <!-- Logo (AION2FUN wordmark) — cool blue family. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

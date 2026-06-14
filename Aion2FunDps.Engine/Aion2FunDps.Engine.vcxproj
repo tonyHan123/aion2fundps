@@ -132,6 +132,7 @@
         <ClInclude Include="src\handlers\other_nickname.h" />
         <ClInclude Include="src\handlers\summon_spawn.h" />
         <ClInclude Include="src\handlers\combat_power.h" />
+        <ClInclude Include="src\handlers\combat_entity_spawn.h" />
         <ClInclude Include="src\handlers\party_member_status.h" />
         <ClInclude Include="src\handlers\party_bulk_info.h" />
         <ClInclude Include="src\handlers\party_assembly.h" />
@@ -155,6 +156,7 @@
         <ClCompile Include="src\handlers\other_nickname.cpp" />
         <ClCompile Include="src\handlers\summon_spawn.cpp" />
         <ClCompile Include="src\handlers\combat_power.cpp" />
+        <ClCompile Include="src\handlers\combat_entity_spawn.cpp" />
         <ClCompile Include="src\handlers\party_member_status.cpp" />
         <ClCompile Include="src\handlers\party_bulk_info.cpp" />
         <ClCompile Include="src\handlers\party_assembly.cpp" />

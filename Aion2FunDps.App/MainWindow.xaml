@@ -287,10 +287,43 @@
                 </Grid>
             </Border>
 
-            <!-- Leaderboard -->
-            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="6,4"
-                          Visibility="{Binding IsContentVisible, Converter={StaticResource BoolToVis}}">
-                <ItemsControl ItemsSource="{Binding Players}">
+            <!-- Leaderboard (컬럼 헤더 + 행) -->
+            <Grid Grid.Row="3" Visibility="{Binding IsContentVisible, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- 컬럼 헤더 (2026-06-13 부활) — 전투력/총딜/DPS/지분 라벨 1회.
+                     예전엔 "만/억 단위가 자체설명"이라 폐지했으나, 전투력(맨몸 k 숫자)이 뭔지
+                     식별 안 된다는 피드백으로 부활. 행과 동일 컬럼폭(26/Auto/*/54/62/54) +
+                     좌우 인셋 14/15 로 세로 정렬 (인셋 = ScrollViewer Padding 6 + Row Border 1 +
+                     행 Grid Margin 7·8). 스크롤바 등장 시에만 행이 ~17px 밀려 미세 어긋남(허용). -->
+                <Grid Grid.Row="0" Margin="14,3,15,3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="26"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="54"/>
+                        <ColumnDefinition Width="62"/>
+                        <ColumnDefinition Width="54"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="2" Text="전투력" HorizontalAlignment="Right"
+                               Foreground="{DynamicResource ColHeaderBrush}"
+                               FontFamily="{DynamicResource UiFont}" FontSize="10" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="3" Text="총딜" TextAlignment="Right" Margin="0,0,9,0"
+                               Foreground="{DynamicResource ColHeaderBrush}"
+                               FontFamily="{DynamicResource UiFont}" FontSize="10" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="4" Text="DPS" TextAlignment="Right"
+                               Foreground="{DynamicResource ColHeaderBrush}"
+                               FontFamily="{DynamicResource UiFont}" FontSize="10" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="5" Text="지분" TextAlignment="Right" Margin="0,0,2,0"
+                               Foreground="{DynamicResource ColHeaderBrush}"
+                               FontFamily="{DynamicResource UiFont}" FontSize="10" FontWeight="SemiBold"/>
+                </Grid>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="6,2,6,4">
+                    <ItemsControl ItemsSource="{Binding Players}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <!-- Ambient Glass row (2026-06-12 리디자인) — docs/ambient-glass-context.md
@@ -344,14 +377,22 @@
                                     </Border>
 
                                     <!-- Layer 2: 텍스트.
-                                         [▶+순위][클래스아이콘][이름] = 정체성 / [총딜][DPS][지분칩] = 실시간 -->
+                                         [▶+순위][클래스아이콘][이름] = 정체성 / [총딜][DPS][지분칩] = 실시간
+                                         글로우(2026-06-13): 클래스색 바 위에서 글자가 묻혀 안 읽힌다는 피드백 →
+                                         테마별 글로우(다크=검정/라이트=흰색) 베이크. ShadowDepth 0 = 외곽 후광. -->
                                     <Grid Margin="7,0,8,0">
+                                        <Grid.Effect>
+                                            <DropShadowEffect Color="{DynamicResource RowTextGlowColor}"
+                                                              BlurRadius="3.5" ShadowDepth="0" Opacity="0.9"/>
+                                        </Grid.Effect>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="26"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="Auto"/>
+                                            <!-- 총딜·DPS 고정폭 (2026-06-13) — 전투력 위치를 행간 정렬시켜
+                                                 컬럼 헤더 라벨과 세로로 맞추기 위함 (기존 Auto → 고정). -->
+                                            <ColumnDefinition Width="54"/>
+                                            <ColumnDefinition Width="62"/>
                                             <ColumnDefinition Width="54"/>
                                         </Grid.ColumnDefinitions>
 
@@ -411,14 +452,37 @@
                                              피드백으로 행에 재노출. 유동 컬럼 우측 끝 고정 = 행간 세로 정렬 유지,
                                              이름이 길면 이름만 트리밍. -->
                                         <DockPanel Grid.Column="2" Margin="6,0,0,0" LastChildFill="True">
-                                            <TextBlock DockPanel.Dock="Right"
-                                                       Text="{Binding CombatPowerDisplay}"
-                                                       Foreground="{DynamicResource CombatPowerBrush}"
-                                                       FontFamily="{DynamicResource NumFont}"
-                                                       FontSize="9.5"
-                                                       Margin="6,1,8,0"
-                                                       VerticalAlignment="Center"
-                                                       ToolTip="전투력"/>
+                                            <!-- 전투력 = 프로스트 배지 (2026-06-13) — 값만, 라벨은 컬럼 헤더에 1회.
+                                                 핑크/크림 배경에 묻히던 문제 해결: 배지가 자기 배경을 들고 다님.
+                                                 우측 마진 0 → 배지 우측 끝이 컬럼 경계 = 헤더 '전투력'과 세로 정렬.
+                                                 CombatPowerDisplay 가 빈 문자열(전투력 미수신)이면 숨김. -->
+                                            <Border DockPanel.Dock="Right"
+                                                    CornerRadius="7"
+                                                    Background="{DynamicResource CpBadgeBgBrush}"
+                                                    BorderBrush="{DynamicResource CpBadgeBorderBrush}"
+                                                    BorderThickness="1"
+                                                    Padding="6,0,6,1"
+                                                    Margin="6,0,0,0"
+                                                    VerticalAlignment="Center"
+                                                    ToolTip="전투력">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding CombatPowerDisplay}" Value="">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Text="{Binding CombatPowerDisplay}"
+                                                           Typography.NumeralAlignment="Tabular"
+                                                           Foreground="{DynamicResource CpBadgeTextBrush}"
+                                                           FontFamily="{DynamicResource NumFont}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           VerticalAlignment="Center"/>
+                                            </Border>
                                             <TextBlock Text="{Binding DisplayName}"
                                                        Foreground="{DynamicResource TextBrush}"
                                                        FontFamily="{DynamicResource UiFont}"
@@ -428,8 +492,12 @@
                                                        TextTrimming="CharacterEllipsis"/>
                                         </DockPanel>
 
-                                        <!-- 총딜 (보조 위계) — 값/단위 분리, 단위 디밍 -->
+                                        <!-- 총딜 (보조 위계) — 값/단위 분리, 단위 디밍.
+                                             프로 튠(2026-06-13): tabular figures 로 전투 중 jitter 방지.
+                                             위계는 크기(11 vs DPS 15)로만 — 색/단위 후퇴는 반투명 BG에서
+                                             묻혀서 되돌림 (사용자 보고 2026-06-13). -->
                                         <TextBlock Grid.Column="3"
+                                                   Typography.NumeralAlignment="Tabular"
                                                    VerticalAlignment="Center"
                                                    TextAlignment="Right"
                                                    Margin="0,0,9,0"
@@ -438,11 +506,12 @@
                                                  FontSize="11"
                                                  Foreground="{DynamicResource NumSecondaryBrush}"/><Run Text="{Binding TotalUnit, Mode=OneWay}"
                                                  FontFamily="{DynamicResource UiFont}"
-                                                 FontSize="8.5"
+                                                 FontSize="9"
                                                  Foreground="{DynamicResource NumUnitBrush}"/></TextBlock>
 
-                                        <!-- DPS (히어로 숫자) -->
+                                        <!-- DPS (히어로 숫자) — tabular figures. -->
                                         <TextBlock Grid.Column="4"
+                                                   Typography.NumeralAlignment="Tabular"
                                                    VerticalAlignment="Center"
                                                    TextAlignment="Right"
                                                    ToolTip="초당 데미지"><Run Text="{Binding DpsValue, Mode=OneWay}"
@@ -477,7 +546,8 @@
                                                     </Style.Triggers>
                                                 </Style>
                                             </Border.Style>
-                                            <TextBlock VerticalAlignment="Center">
+                                            <TextBlock VerticalAlignment="Center"
+                                                       Typography.NumeralAlignment="Tabular">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
                                                         <Setter Property="Foreground" Value="{DynamicResource ChipT0TextBrush}"/>
@@ -492,15 +562,16 @@
                                                     </Style>
                                                 </TextBlock.Style><Run Text="{Binding ShareValue, Mode=OneWay}"
                                                      FontFamily="{DynamicResource NumFont}"
-                                                     FontSize="10.5" FontWeight="SemiBold"/><Run Text="%" FontSize="8.5"/></TextBlock>
+                                                     FontSize="11" FontWeight="SemiBold"/><Run Text="%" FontSize="9"/></TextBlock>
                                         </Border>
                                     </Grid>
                                 </Grid>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
 
             <!-- Footer -->
             <Border Grid.Row="4" Padding="10,4" Background="{DynamicResource FooterOverlayBrush}"

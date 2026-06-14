@@ -623,6 +623,26 @@ public sealed class PacketDispatcher : IDispatcherTelemetry
             return;
         }
 
+        // 0x22 0x92 = IN-DUNGEON ENTITY SPAWN (2026-06-13 둥지 분석, bridge_find_0b97.py).
+        // op=4136 이 둥지에선 상태(좌표/HP)만 줘서 못 이었던 다리를 여기서 잇는다:
+        // 전투 actor_id(op=0438 데미지의 id) + canon + 닉 + job 을 한 패킷에 담음.
+        // 같은직업 2+ 멤버(궁시아·올리브마티니)도 1:1 로 정확히 귀속. Info-enrichment only.
+        if (op0 == 0x22 && op1 == 0x92)
+        {
+            bool ok = CombatEntitySpawnHandler.TryParse(body, ticks, sourceIpv4, out var spawn);
+            LogPacket("ENTITY_SPAWN", body, ok);
+            if (ok)
+            {
+                emit(spawn);
+                Interlocked.Increment(ref _knownCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _malformedCount);
+            }
+            return;
+        }
+
         // 0x01 0x91 = ENCOUNTER_ANNOUNCE (boss intro banner — used to link entityId → mob_code)
         if (op0 == 0x01 && op1 == 0x91)
         {

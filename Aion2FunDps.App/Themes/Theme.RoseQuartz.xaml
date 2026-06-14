@@ -59,7 +59,8 @@
     <!-- Typography — same family across themes. One typography choice owned
          at the design-system level keeps "this app's voice" consistent
          regardless of color theme. -->
-    <FontFamily x:Key="UiFont">Pretendard, Malgun Gothic, Segoe UI</FontFamily>
+    <!-- Pretendard 임베드 (2026-06-13) — 미설치 PC에서 Malgun 폴백 문제 해결. -->
+    <FontFamily x:Key="UiFont">/Aion2FunDps.App;component/Assets/Fonts/#Pretendard, Malgun Gothic, Segoe UI</FontFamily>
     <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
 
     <!-- Row + section surface overlays. Dark-alpha against the pink BG
@@ -131,6 +132,9 @@
     <SolidColorBrush x:Key="BarGlossBrush"        Color="#66FFFFFF"/>
 
     <SolidColorBrush x:Key="NumPrimaryBrush"      Color="#2B1320"/>
+    <!-- 위계는 크기/굵기로 (DPS 15 Bold vs 총딜 11). 색은 진하게 유지 —
+         라이트 테마 BG가 반투명(0xED)이라 밝은 게임화면 위에서 옅어져서
+         색을 밝히면 묻힘 (사용자 보고 2026-06-13). -->
     <SolidColorBrush x:Key="NumSecondaryBrush"    Color="#5E3346"/>
     <SolidColorBrush x:Key="NumUnitBrush"         Color="#8A5A6E"/>
     <SolidColorBrush x:Key="RankMutedBrush"       Color="#7A4658"/>
@@ -143,7 +147,16 @@
     <SolidColorBrush x:Key="ChipT1TextBrush"   Color="#5A6470"/>
     <SolidColorBrush x:Key="ChipT0BgBrush"     Color="#1A3B1A28"/>
     <SolidColorBrush x:Key="ChipT0BorderBrush" Color="#333B1A28"/>
-    <SolidColorBrush x:Key="ChipT0TextBrush"   Color="#6E4658"/>
+    <SolidColorBrush x:Key="ChipT0TextBrush"   Color="#54303F"/>
+
+    <!-- 전투력 배지 (2026-06-13) — 핑크 테마 = 어두운 프로스트 칩 + 딥와인 텍스트. -->
+    <SolidColorBrush x:Key="CpBadgeBgBrush"     Color="#1F000000"/>
+    <SolidColorBrush x:Key="CpBadgeBorderBrush" Color="#33000000"/>
+    <SolidColorBrush x:Key="CpBadgeTextBrush"   Color="#2B1320"/>
+    <!-- 컬럼 헤더 — 반투명 BG 위에서도 또렷하게 진한 와인 (옅은 muted 는 묻힘). -->
+    <SolidColorBrush x:Key="ColHeaderBrush"     Color="#5E3346"/>
+    <!-- 행 텍스트 글로우 — 클래스색 바 위 어두운 글자가 뜨게. 라이트 테마 = 흰색 글로우. -->
+    <Color x:Key="RowTextGlowColor">#FFFFFF</Color>
 
     <!-- Logo (AION2FUN wordmark) — pink-to-magenta gradient. -->
     <LinearGradientBrush x:Key="LogoMainBrush" StartPoint="0,0" EndPoint="0,1">

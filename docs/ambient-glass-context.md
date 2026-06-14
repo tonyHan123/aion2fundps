@@ -2,6 +2,37 @@
 
 작업 중 내린 결정과 근거. 다음 세션(사람/에이전트)이 재推론 없이 이어받기 위한 기록.
 
+## 2026-06-13 — 전투력 가시성 + 컬럼 헤더 부활 + 숫자 프로 튠
+
+사용자 피드백: 핑크(RoseQuartz)에서 전투력 글자가 안 보임 → 모든 테마에서 가시성 나쁨.
+진단: ① 라벨 없어 174.8k가 전투력인지 총딜인지 모름 ② inline 텍스트는 테마 BG와
+싸워 어디서든 묻힘 (CombatPowerBrush plum #3A2D5C 이 핑크와 hue 겹침).
+
+**핵심 원칙 — 배지는 자기 배경을 들고 다닌다.** inline 보정으론 테마마다 또 깨짐.
+라이트 테마=어두운 배지 / 다크 테마=밝은 배지로 뒤집으면 어떤 BG에서도 대비 보장.
+목업 4안(A 현재 / B 라벨인라인 / C 프로스트칩 / D 솔리드배지) × 3테마 매트릭스 렌더
+(tools/GlassMockup, docs/design/cp-*.png) 후 사용자 선택:
+- **전투력 = C 프로스트 칩(값만)** + **'전투력' 라벨은 컬럼 헤더에 1회** (행마다 반복 X).
+- 사용자 추가 요구로 헤더에 전투력/총딜/DPS/지분 4개 라벨 전부 표기 (진짜 컬럼 헤더).
+
+적용 (빌드 0 에러):
+- `Theme.*.xaml` ×3 — `CpBadgeBg/Border/TextBrush` (C 프로스트, 테마별 반전) +
+  `ColHeaderBrush` 키 추가. 다크=밝은칩/골드텍스트, 핑크=어두운칩/딥와인, 크림=딥틸.
+- `MainWindow.xaml` — 전투력 TextBlock → 프로스트 Border 배지(값만, CombatPowerDisplay
+  빈 문자열이면 Collapsed). **2026-06-12 에 폐지했던 컬럼 헤더 행을 부활** (ScrollViewer를
+  Grid[헤더行/스크롤行]로 감쌈). 헤더는 행과 동일 컬럼폭 + 좌우 인셋 14/15 로 세로 정렬.
+- **총딜·DPS 컬럼 Auto → 고정폭(54/62)** — 전투력(col2 우측 끝) 위치를 행간 정렬시켜
+  헤더 라벨과 칼같이 맞추기 위함. (Auto면 내용폭 따라 전투력 x가 행마다 흔들림.)
+  주의: 스크롤바 등장 시에만 행이 ~17px 밀려 헤더와 미세 어긋남(허용 범위).
+
+**숫자 프로 튠** (사용자: "프로 게임 디자이너면 총딜/DPS를 어떻게?"):
+- tabular figures (`Typography.NumeralAlignment="Tabular"`) — 총딜/DPS/전투력/지분 전부.
+  정적에선 차이 작지만(Rajdhani 거의 고정폭) **전투 중 숫자 틱마다 컬럼 jitter 방지**가 핵심.
+- 위계 강화 — 총딜 명도 후퇴(NumSecondaryBrush 톤다운, 라이트는 BG쪽으로 밝혀 후퇴),
+  단위 더 디밍(NumUnitBrush) + 단위 폰트 축소 (총딜 8.5→7, DPS 10→9). DPS만 히어로로 띄움.
+- NumSecondary/NumUnitBrush 는 행 전용(다른 창 미사용) 확인 후 톤 변경.
+- A/B 렌더: docs/design/number-typography-ab.png.
+
 ## 2026-06-12 — 실제 앱 적용 (Phase 1+2 완료)
 
 칩 B-3 확정 직후 적용. 변경 파일.

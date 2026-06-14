@@ -494,6 +494,7 @@ $RECYCLE.BIN/
 # Per-build dotnet output redirected to file. Useful while iterating
 # but not source state.
 **/build-log.txt
+*.lscache
 
 # Live capture / Sysinternals trace artifacts left in the repo root by
 # debugging sessions. Wire bytes can carry account ids; keep out.
